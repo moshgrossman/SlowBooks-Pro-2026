@@ -29,6 +29,10 @@ from app.models.backups import Backup
 # Phase 6: Ambitious
 from app.models.companies import Company
 from app.models.payroll import Employee, PayRun, PayStub
+# Tier 1: Full payroll / HR system
+from app.models.time_entries import TimeEntry
+from app.models.pto import PTOPolicy, PTOAccrual, PTORequest
+from app.models.bank_accounts import EmployeeBankAccount
 
 # Phase 8: QuickBooks Online
 from app.models.qbo_mapping import QBOMapping
@@ -61,6 +65,8 @@ __all__ = [
     "TaxCategoryMapping", "Backup",
     # Phase 6
     "Company", "Employee", "PayRun", "PayStub",
+    # Tier 1: Full payroll / HR
+    "TimeEntry", "PTOPolicy", "PTOAccrual", "PTORequest", "EmployeeBankAccount",
     # Phase 8
     "QBOMapping",
     # Phase 10

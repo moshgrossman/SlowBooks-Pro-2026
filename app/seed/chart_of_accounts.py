@@ -24,6 +24,13 @@ CHART_OF_ACCOUNTS = [
     {"account_number": "2100", "name": "Credit Card", "account_type": "liability"},
     {"account_number": "2200", "name": "Sales Tax Payable", "account_type": "liability"},
     {"account_number": "2300", "name": "Payroll Liabilities", "account_type": "liability"},
+    {"account_number": "2310", "name": "Federal Income Tax Payable", "account_type": "liability"},
+    {"account_number": "2320", "name": "State Income Tax Payable", "account_type": "liability"},
+    {"account_number": "2330", "name": "Social Security Payable", "account_type": "liability"},
+    {"account_number": "2340", "name": "Medicare Payable", "account_type": "liability"},
+    {"account_number": "2350", "name": "FUTA Payable", "account_type": "liability"},
+    {"account_number": "2360", "name": "State Unemployment (SUTA) Payable", "account_type": "liability"},
+    {"account_number": "2370", "name": "Other Payroll Deductions Payable", "account_type": "liability"},
     {"account_number": "2400", "name": "Loan Payable", "account_type": "liability"},
     {"account_number": "2500", "name": "Other Current Liabilities", "account_type": "liability"},
 
@@ -48,6 +55,9 @@ CHART_OF_ACCOUNTS = [
     # Expenses (6000s)
     {"account_number": "6000", "name": "Advertising & Marketing", "account_type": "expense"},
     {"account_number": "6100", "name": "Auto & Truck Expense", "account_type": "expense"},
+    {"account_number": "6110", "name": "Wages & Salaries", "account_type": "expense"},
+    {"account_number": "6120", "name": "Payroll Tax Expense", "account_type": "expense"},
+    {"account_number": "6130", "name": "Workers Compensation Insurance", "account_type": "expense"},
     {"account_number": "6200", "name": "Bank Charges & Fees", "account_type": "expense"},
     {"account_number": "6300", "name": "Insurance", "account_type": "expense"},
     {"account_number": "6400", "name": "Office Supplies", "account_type": "expense"},

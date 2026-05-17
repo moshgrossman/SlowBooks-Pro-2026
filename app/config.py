@@ -44,3 +44,16 @@ COMPANY_PHONE = os.getenv("COMPANY_PHONE", "")
 COMPANY_EMAIL = os.getenv("COMPANY_EMAIL", "")
 DEFAULT_TERMS = os.getenv("DEFAULT_TERMS", "Net 30")
 DEFAULT_TAX_RATE = float(os.getenv("DEFAULT_TAX_RATE", "0.0"))
+
+# Secret used to derive the symmetric key that encrypts payroll PII at rest
+# (employee bank routing/account numbers). MUST be overridden in production —
+# the development default below is well-known and provides no real protection.
+PAYROLL_ENCRYPTION_SECRET = os.getenv(
+    "PAYROLL_ENCRYPTION_SECRET", "slowbooks-dev-payroll-key-change-me"
+)
+
+# Employer identifiers and rates used by payroll tax forms / state engines.
+EMPLOYER_EIN = os.getenv("EMPLOYER_EIN", "")
+EMPLOYER_STATE = os.getenv("EMPLOYER_STATE", "WA")
+# State unemployment (SUTA) experience rate as a decimal, e.g. 0.012 for 1.2%.
+SUTA_RATE = float(os.getenv("SUTA_RATE", "0.012"))

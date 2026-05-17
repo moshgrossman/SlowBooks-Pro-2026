@@ -26,6 +26,7 @@ from app.models import (  # noqa: F401
     audit,
     backups,
     banking,
+    bank_accounts,
     bank_rules,
     bills,
     budgets,
@@ -39,11 +40,13 @@ from app.models import (  # noqa: F401
     items,
     payments,
     payroll,
+    pto,
     purchase_orders,
     qbo_mapping,
     recurring,
     settings as settings_model,
     tax,
+    time_entries,
     transactions,
 )
 

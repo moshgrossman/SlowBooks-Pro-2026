@@ -46,6 +46,8 @@ from app.routes import qbo
 from app.routes import journal, deposits, cc_charges, checks
 # Phase 10: Quick Wins + Medium Effort Features
 from app.routes import bank_rules, budgets, attachments, email_templates
+# Tier 1: Full payroll / HR system
+from app.routes import time_entries, pto, tax_forms
 
 from app.config import CORS_ALLOW_ORIGINS
 from app.database import SessionLocal
@@ -112,6 +114,10 @@ app.include_router(bank_rules.router)
 app.include_router(budgets.router)
 app.include_router(attachments.router)
 app.include_router(email_templates.router)
+# Tier 1: Full payroll / HR system
+app.include_router(time_entries.router)
+app.include_router(pto.router)
+app.include_router(tax_forms.router)
 
 # Register audit log hooks
 register_audit_hooks(SessionLocal)

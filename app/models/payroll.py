@@ -1,6 +1,7 @@
 # ============================================================================
 # Payroll — employee records, pay runs, withholding calculations
-# Feature 17: Simplified payroll with federal/state/SS/Medicare
+# Feature 17 / Tier 1: modern (2020+) W-4, per-employee pay frequency,
+# employee + employer side tax capture on each stub.
 # ============================================================================
 
 import enum
@@ -20,15 +21,49 @@ class PayType(str, enum.Enum):
 
 
 class FilingStatus(str, enum.Enum):
-    SINGLE = "single"
-    MARRIED = "married"
+    # Maps to the three checkboxes on the 2020+ Form W-4, Step 1(c).
+    SINGLE = "single"                    # Single or Married filing separately
+    MARRIED = "married"                  # Married filing jointly
     HEAD_OF_HOUSEHOLD = "head_of_household"
+
+
+class PayFrequency(str, enum.Enum):
+    WEEKLY = "weekly"
+    BIWEEKLY = "biweekly"
+    SEMI_MONTHLY = "semi_monthly"
+    MONTHLY = "monthly"
+
+
+# Number of pay periods in a year for each frequency. Drives both the salary
+# divisor and the annualization factor in the withholding math.
+PERIODS_PER_YEAR = {
+    PayFrequency.WEEKLY: 52,
+    PayFrequency.BIWEEKLY: 26,
+    PayFrequency.SEMI_MONTHLY: 24,
+    PayFrequency.MONTHLY: 12,
+}
+
+
+def periods_per_year(freq) -> int:
+    """Resolve a PayFrequency (or its string value) to pay periods per year."""
+    if isinstance(freq, PayFrequency):
+        return PERIODS_PER_YEAR[freq]
+    try:
+        return PERIODS_PER_YEAR[PayFrequency(freq)]
+    except (ValueError, KeyError):
+        return 26
 
 
 class PayRunStatus(str, enum.Enum):
     DRAFT = "draft"
     PROCESSED = "processed"
     VOID = "void"
+
+
+class PayRunType(str, enum.Enum):
+    REGULAR = "regular"
+    OFF_CYCLE = "off_cycle"
+    BONUS = "bonus"
 
 
 class Employee(Base):
@@ -39,15 +74,28 @@ class Employee(Base):
     last_name = Column(String(100), nullable=False)
     ssn_last_four = Column(String(4), nullable=True)
     pay_type = Column(Enum(PayType), default=PayType.HOURLY)
-    pay_rate = Column(Numeric(12, 2), default=0)  # hourly rate or salary amount
+    pay_rate = Column(Numeric(12, 2), default=0)  # hourly rate or annual salary
+    pay_frequency = Column(Enum(PayFrequency), default=PayFrequency.BIWEEKLY)
     filing_status = Column(Enum(FilingStatus), default=FilingStatus.SINGLE)
-    allowances = Column(Integer, default=0)
+
+    # --- 2020+ Form W-4 (the redesign removed "allowances" entirely) ---
+    multiple_jobs = Column(Boolean, default=False)            # Step 2(c) checkbox
+    dependents_amount = Column(Numeric(12, 2), default=0)     # Step 3 ($2000/child + $500/other)
+    other_income_annual = Column(Numeric(12, 2), default=0)  # Step 4(a)
+    deductions_annual = Column(Numeric(12, 2), default=0)    # Step 4(b)
+    extra_withholding = Column(Numeric(12, 2), default=0)    # Step 4(c) per pay period
 
     address1 = Column(String(200), nullable=True)
     address2 = Column(String(200), nullable=True)
     city = Column(String(100), nullable=True)
     state = Column(String(50), nullable=True)
     zip = Column(String(20), nullable=True)
+
+    # Tax situs — which state's withholding engine applies. Defaults to the
+    # mailing-address state when unset (see schema/route logic).
+    work_state = Column(String(2), nullable=True)
+    # Workers' comp / WA L&I risk classification code.
+    wc_class_code = Column(String(20), nullable=True)
 
     hire_date = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
@@ -57,10 +105,14 @@ class Employee(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     pay_stubs = relationship("PayStub", back_populates="employee")
+    bank_accounts = relationship(
+        "EmployeeBankAccount", back_populates="employee",
+        cascade="all, delete-orphan",
+    )
 
-
-# Fix missing Boolean import
-from sqlalchemy import Boolean
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
 
 
 class PayRun(Base):
@@ -71,10 +123,12 @@ class PayRun(Base):
     period_end = Column(Date, nullable=False)
     pay_date = Column(Date, nullable=False)
     status = Column(Enum(PayRunStatus), default=PayRunStatus.DRAFT)
+    run_type = Column(Enum(PayRunType), default=PayRunType.REGULAR)
 
     total_gross = Column(Numeric(12, 2), default=0)
     total_net = Column(Numeric(12, 2), default=0)
     total_taxes = Column(Numeric(12, 2), default=0)
+    total_employer_taxes = Column(Numeric(12, 2), default=0)
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -90,13 +144,35 @@ class PayStub(Base):
     pay_run_id = Column(Integer, ForeignKey("pay_runs.id", ondelete="CASCADE"), nullable=False)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
 
+    # Hours — total kept for backwards compatibility, plus the itemized split
+    # that overtime law and pay-stub disclosure rules require.
     hours = Column(Numeric(10, 2), default=0)
+    regular_hours = Column(Numeric(10, 2), default=0)
+    overtime_hours = Column(Numeric(10, 2), default=0)
+    doubletime_hours = Column(Numeric(10, 2), default=0)
+
     gross_pay = Column(Numeric(12, 2), default=0)
+
+    # Employee-side withholding
     federal_tax = Column(Numeric(12, 2), default=0)
-    state_tax = Column(Numeric(12, 2), default=0)
-    ss_tax = Column(Numeric(12, 2), default=0)       # Social Security 6.2%
-    medicare_tax = Column(Numeric(12, 2), default=0)  # Medicare 1.45%
+    state_tax = Column(Numeric(12, 2), default=0)           # state income tax
+    state_other_employee = Column(Numeric(12, 2), default=0)  # WA PFML/Cares, SDI, PFL...
+    ss_tax = Column(Numeric(12, 2), default=0)              # Social Security 6.2% (employee)
+    medicare_tax = Column(Numeric(12, 2), default=0)        # Medicare 1.45% + 0.9% addl
+    pretax_deductions = Column(Numeric(12, 2), default=0)
+    posttax_deductions = Column(Numeric(12, 2), default=0)
     net_pay = Column(Numeric(12, 2), default=0)
+
+    # Employer-side taxes (not withheld from the employee — company expense)
+    employer_ss_tax = Column(Numeric(12, 2), default=0)
+    employer_medicare_tax = Column(Numeric(12, 2), default=0)
+    futa_tax = Column(Numeric(12, 2), default=0)
+    suta_tax = Column(Numeric(12, 2), default=0)
+    state_other_employer = Column(Numeric(12, 2), default=0)  # WA PFML employer, L&I...
+
+    # JSON blob with the fully itemized line-by-line breakdown, used to render
+    # pay stubs and tax forms without re-running the calculator.
+    detail_json = Column(Text, nullable=True)
 
     pay_run = relationship("PayRun", back_populates="stubs")
     employee = relationship("Employee", back_populates="pay_stubs")
