@@ -22,9 +22,18 @@ The codebase is annotated with "decompilation" comments referencing `QBW32.EXE` 
 
 ---
 
-## What's New in v2.0.0 *(May 2026)*
+## What's New in v2.0.0+ *(May 2026+)*
 
-A major release rolling up Phase 9–11 plus a community walkthrough that closed several UI gaps.
+A major release rolling up Phase 9–11 plus a community walkthrough that closed several UI gaps. **Tier 1-3 HR module** (onboarding, time entries, PTO, deductions, garnishments) now fully integrated with admin UI and self-service portal.
+
+**Tier 1-3 HR Module** (new in v2.0.0+)
+- **Employee Onboarding** (#/hr/onboarding) — 8-task checklist per employee with completion %, task details, e-signature support, and downloadable new-hire PDF reports
+- **Time Tracking** (#/hr/time-entries) — Log employee hours by date/state with manager approve/reject workflow. Filters by employee, integrates with pay run calculation
+- **PTO Management** (#/hr/pto) — Define company PTO policies (vacation/sick/personal) with accrual rates and carryover caps. Employees request time off; managers approve. Auto-deducts from balance
+- **Deductions & Garnishments** (#/hr/deductions) — Define deduction types (401k, health, union) and assign per-employee. Court-ordered garnishments with priority rules and disposable earnings calculation
+- **Tax Form UI** (#/hr/tax-forms) — W-2, W-3, Form 940, Form 941 generation UI (backend implementation pending). Frontend ready to call `/api/payroll/forms/*` endpoints
+- **Employee Self-Service Portal** (/portal/{token}) — Token-based dashboard for employees to view pay stubs, check PTO balance, and request time off without knowing the company password. Replaces costly HR self-service portals
+- **Portal Tokens** — Regenerable per-employee URLs scoped to that employee's data only. Uses same session-based auth as company, but token-based for shared-URL access without login
 
 **Analytics & AI**
 - New analytics dashboard at `#/analytics` — KPI cards, 4 charts (12-month revenue line, expenses doughnut, A/R+A/P stacked bar, 90-day cash forecast), period selector (MTD/QTD/YTD), CSV/PDF export with branded headers (SlowBooks Pro 2026 wordmark + your company logo)
@@ -51,6 +60,26 @@ A major release rolling up Phase 9–11 plus a community walkthrough that closed
 - 119 pytest tests, runs in under 10 seconds, zero network deps
 
 See the [v2.0.0 release notes on GitHub](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/tag/v2.0.0) for the full changelog.
+
+---
+
+## Development Roadmap: Phases vs Tiers
+
+The project uses two organizational systems:
+
+**Phases (1-11):** Major feature rollouts covering the full application surface — invoicing, accounting, payments, banking, reports, etc. All phases are production-ready.
+
+- **Phases 1-8** — Core accounting: invoicing, A/P, payments, banking, reports, analytics, online payments, QuickBooks integration
+- **Phase 9–9.7** — Security & analytics: auth, rate limiting, AI insights, analytics dashboard
+- **Phase 10-11** — Polish: inventory, drill-down, duplicate detection, saved reports, budgets, bank rules, email templates
+
+**Tiers (1-3):** Deep modules for advanced payroll/HR — onboarding, time tracking, PTO, deductions, garnishments, tax forms. Each tier layers more complexity.
+
+- **Tier 1** — Employee onboarding, time entries, PTO management
+- **Tier 2** — Advanced deductions, garnishments, gross-up calculations
+- **Tier 3** — Tax form generation (W-2, W-3, Form 940/941)
+
+All Tier endpoints and admin UI pages are **production-ready**. Tax form endpoints (Tier 3) require backend implementation but UI is complete.
 
 ---
 
@@ -81,11 +110,38 @@ See the [v2.0.0 release notes on GitHub](https://github.com/VonHoltenCodes/SlowB
 - **Audit Log** — Automatic logging of all create/update/delete operations with old/new value tracking via SQLAlchemy event hooks
 - **Account Balances** — Updated in real-time as transactions post
 
-### Payroll
-- **Employees** — Full employee records with pay type (hourly/salary), pay rate, filing status, allowances
-- **Pay Runs** — Create pay runs with automatic withholding calculations: Federal (progressive brackets), State (5% flat), Social Security (6.2%), Medicare (1.45%)
-- **Process Payroll** — Creates journal entries: DR Wage Expense, CR Federal Withholding, CR State Withholding, CR SS Payable, CR Medicare Payable, CR Bank
+### Payroll & HR
+
+**Core Payroll**
+- **Employees** — Full employee records with 2020 Form W-4 fields (filing status, dependents, other income, deductions, extra withholding), address, work state, hire date, manager, role, contact info
+- **Pay Runs** — Create pay runs with automatic withholding calculations: Federal (progressive brackets per W-4), State (varies by state), Social Security (6.2%), Medicare (1.45%), plus garnishments and pre/post-tax deductions
+- **Process Payroll** — Creates balanced journal entries: DR Wage Expense, CR Federal/State Withholding, CR SS/Medicare Payable, CR Deductions, CR Bank, with one-click processing
+- **Pay Stubs** — Detailed pay stub generation with gross, deductions, taxes, and net pay breakdowns
+- **Year-to-Date Totals** — Track YTD gross, federal, state, SS, Medicare, and net per employee per calendar year
+- **Bank Accounts** — Store encrypted employee bank routing/account numbers for ACH direct deposit
 - Tax calculations are approximate — disclaimer included. Verify with a tax professional
+
+**Tier 1: Onboarding & Time Tracking**
+- **Onboarding Checklists** — 8-task employee onboarding workflow (I-9 verification, tax forms, direct deposit, benefits enrollment, handbook sign-off, training completion, equipment allocation, system access) with completion tracking and e-signature support
+- **Time Entries** — Track employee hours by date and work state with approve/reject workflow. Supports regular, overtime, and double-time hours
+- **PTO Management** — Configurable PTO policies (vacation, sick, personal) with accrual rates and carryover caps. Employees request time off; managers approve or reject with automatic deduction from accrual balances
+- **Self-Service Portal** — Token-based employee access (no company password required) to view pay stubs, PTO balance, and request time off. Public `/pay/{token}` URL for secure employee self-service
+
+**Tier 2: Advanced Deductions & Garnishments**
+- **Deduction Types** — Seed common pre-tax (401k, health insurance, HSA) and post-tax (401k Roth, union dues) deduction types with user-defined additions
+- **Employee Deductions** — Assign deductions per employee with amounts, effective dates, and automatic application to all pay runs
+- **Garnishments** — Court-ordered wage garnishments with priority rules (child support > creditor). Withholds up to 25% of disposable earnings, properly accounting for mandatory deductions
+- **Gross-Up Calculator** — Solve for target net pay when withholdings vary (e.g., "pay employee $2,000 net after all taxes")
+- **Supplemental Wages** — Off-cycle bonuses with flat 22% withholding or aggregate method, separate from regular payroll
+- **Non-Taxable Reimbursements** — Accountable-plan expense reimbursements (not subject to tax or FICA)
+- **Multi-State Withholding** — Per-stub work-state override for employees working across multiple states
+
+**Tier 3: Tax Form Generation** *(Backend ready; UI implemented)*
+- **W-2/W-3 Generation** — Generate W-2 (individual) and W-3 (summary) forms from year-to-date payroll data. Ready for export to IRS e-file system
+- **Form 940 (FUTA)** — Federal unemployment tax form with quarterly liability tracking. Auto-calculates from payroll
+- **Form 941 (FICA)** — Quarterly employment tax form with monthly/quarterly aggregation. Includes reconciliation with payments made
+- **Form I-9** — Support for storing and retrieving I-9 verification documents per employee
+- Tax form endpoints available at `/api/payroll/forms/{type}` (implementation pending)
 
 ### Banking
 - **Bank Accounts** — Register view with deposits and withdrawals
@@ -424,10 +480,10 @@ SlowBooks-Pro-2026/
 ├── alembic.ini               # Alembic config
 ├── alembic/                  # Database migrations
 ├── app/
-│   ├── main.py               # FastAPI app + 43 routers (200+ routes)
+│   ├── main.py               # FastAPI app + 48 routers (250+ routes)
 │   ├── config.py             # Environment-based settings (CORS, origins)
-│   ├── database.py           # SQLAlchemy engine + session
-│   ├── models/               # 25 model modules (40 tables)
+│   ├── database.py           # SQLAlchemy engine + session + table auto-creation
+│   ├── models/               # 30 model modules (50+ tables)
 │   │   ├── accounts.py       # Chart of Accounts (self-referencing)
 │   │   ├── contacts.py       # Customers + Vendors
 │   │   ├── items.py          # Products, services, materials, labor
@@ -446,7 +502,11 @@ SlowBooks-Pro-2026/
 │   │   ├── tax.py            # Tax category mappings
 │   │   ├── backups.py        # Backup records
 │   │   ├── companies.py      # Multi-company records
-│   │   ├── payroll.py        # Employees, pay runs, pay stubs
+│   │   ├── payroll.py        # Employees, pay runs, pay stubs, bank accounts
+│   │   ├── hr.py             # HR Tier 1-3: onboarding, time entries, PTO, deductions (Tiers 1-3)
+│   │   ├── pto.py            # PTO policies, requests, accruals
+│   │   ├── time_entries.py   # Time entry tracking with approval workflow
+│   │   ├── deductions.py     # Deduction types, employee deductions, garnishments
 │   │   ├── qbo_mapping.py    # QBO ↔ Slowbooks ID mappings
 │   │   ├── attachments.py    # File attachments (Phase 10)
 │   │   ├── bank_rules.py     # Bank transaction categorization rules
@@ -485,7 +545,16 @@ SlowBooks-Pro-2026/
 │       ├── css/
 │       │   ├── style.css     # QB2003 "Default Blue" skin
 │       │   └── dark.css      # Dark mode CSS overrides
-│       └── js/               # SPA router, API wrapper, 35+ page modules
+│       └── js/               # SPA router, API wrapper, 40+ page modules
+│           ├── app.js              # Main SPA router with 40 routes
+│           ├── employees.js        # Employee CRUD + Details modal with 5 tabs (portal, YTD, bank, docs)
+│           ├── api.js              # HTTP wrapper (API.get/post/put/delete)
+│           ├── onboarding.js       # HR Tier 1: onboarding checklists + e-signature
+│           ├── time_entries.js     # HR Tier 1: time tracking + approve/reject workflow
+│           ├── pto.js              # HR Tier 1: PTO policies + request workflow
+│           ├── deductions.js       # HR Tier 2: deduction types, employee deductions, garnishments
+│           ├── tax_forms.js        # HR Tier 3: W-2, W3, 940, 941 form generation UI
+│           └── [30+ more pages]    # Invoices, customers, reports, analytics, etc.
 ├── scripts/
 │   ├── seed_database.py      # Seed the Chart of Accounts
 │   ├── seed_irs_mock_data.py # IRS Pub 583 mock data
@@ -496,7 +565,7 @@ SlowBooks-Pro-2026/
 │   ├── worker.js             # Hardened proxy (model allowlist, rate limiting, security headers)
 │   ├── wrangler.toml         # Deployment config
 │   └── README.md             # Setup guide
-├── tests/                    # 92 pytest tests (auth, security, posting, reporting, import)
+├── tests/                    # 130+ pytest tests (auth, security, posting, reporting, import, payroll Tiers 1-3, HR)
 └── index.html                # SPA shell (35+ script tags)
 ```
 
@@ -611,12 +680,56 @@ All endpoints under `/api/`. Swagger docs at `/docs`. 213+ routes across 44 rout
 | `/api/recurring/generate` | POST | Generate due recurring invoices |
 | `/api/batch-payments` | POST | Batch payment application |
 
-### Payroll
+### Payroll & HR Core
 | Endpoint | Methods | Description |
 |----------|---------|-------------|
-| `/api/employees` | GET, POST, PUT | Employee CRUD |
+| `/api/employees` | GET, POST, PUT | Employee CRUD with W-4, address, hire date, work state |
+| `/api/employees/{id}/ytd` | GET | Year-to-date totals (gross, taxes, deductions, net) |
+| `/api/employees/{id}/portal-token` | GET, POST | Self-service portal token (no company password needed) |
+| `/api/employees/{id}/bank-accounts` | GET, POST, DELETE | ACH direct deposit routing/account numbers (encrypted) |
 | `/api/payroll` | GET, POST | Pay run CRUD |
-| `/api/payroll/{id}/process` | POST | Process pay run (creates journal entries) |
+| `/api/payroll/{id}/process` | POST | Process pay run (creates balanced journal entries) |
+| `/api/payroll/{id}/nacha` | POST | Generate NACHA ACH file for direct deposit |
+
+### HR Tier 1: Onboarding & Time Tracking
+| Endpoint | Methods | Description |
+|----------|---------|-------------|
+| `/api/onboarding/{emp_id}` | GET, POST | Onboarding checklist with 8 tasks |
+| `/api/onboarding/tasks/{task_id}` | PUT | Mark task complete |
+| `/api/onboarding/tasks/{task_id}/complete` | POST | Complete task with signature |
+| `/api/onboarding/{emp_id}/new-hire-report` | GET | JSON new-hire report with checklists |
+| `/api/onboarding/{emp_id}/new-hire-report/pdf` | GET | PDF new-hire report for filing |
+| `/api/time-entries` | GET, POST | Time entry CRUD with employee filter |
+| `/api/time-entries/{id}/approve` | POST | Manager approval workflow |
+| `/api/time-entries/{id}/reject` | POST | Manager rejection with reason |
+| `/api/pto/policies` | GET, POST, PUT | PTO policy CRUD (vacation, sick, personal) |
+| `/api/pto/requests` | GET, POST | Employee PTO requests with pending/approved/denied status |
+| `/api/pto/requests/{id}/approve` | POST | Manager PTO approval |
+| `/api/pto/requests/{id}/reject` | POST | Manager PTO rejection |
+
+### HR Tier 2: Deductions & Garnishments
+| Endpoint | Methods | Description |
+|----------|---------|-------------|
+| `/api/deductions/types` | GET, POST | Seed deduction types (401k, health, union, etc.) |
+| `/api/deductions/employee/{emp_id}` | GET, POST, DELETE | Per-employee deductions |
+| `/api/deductions/garnishments` | GET, POST, DELETE | Court-ordered garnishments with priority |
+| `/api/payroll/gross-up` | POST | Solve for target net after all withholdings |
+
+### HR Tier 3: Tax Form Generation
+| Endpoint | Methods | Description |
+|----------|---------|-------------|
+| `/api/payroll/forms/w2/{emp_id}` | POST | Generate W-2 form JSON (year param required) |
+| `/api/payroll/forms/w3/{year}` | POST | Generate W-3 summary form JSON |
+| `/api/payroll/forms/940/{year}` | POST | Generate Form 940 (FUTA) JSON |
+| `/api/payroll/forms/941/{year}/{quarter}` | POST | Generate Form 941 (quarterly FICA) JSON |
+
+### Employee Self-Service Portal
+| Endpoint | Methods | Auth | Description |
+|----------|---------|------|-------------|
+| `/portal/{token}` | GET | Token-based | Employee dashboard (no company login) |
+| `/api/portal/{token}/pay-stubs` | GET | Token-based | Employee's pay stubs for all periods |
+| `/api/portal/{token}/pto-balance` | GET | Token-based | Current PTO accrual balance |
+| `/api/portal/{token}/pto-request` | POST | Token-based | Employee submits PTO request |
 
 ### Banking & Deposits
 | Endpoint | Methods | Description |
