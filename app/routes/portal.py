@@ -8,12 +8,13 @@
 from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.services.rate_limit import limiter
 from app.models.bank_accounts import BankAccountKind, DepositType, EmployeeBankAccount
 from app.models.payroll import Employee, FilingStatus
 from app.models.pto import PTOAccrual, PTOPolicy, PTORequest, PTOType
@@ -49,7 +50,8 @@ def _processed_stub_count(emp: Employee) -> int:
 
 
 @router.get("/portal/{token}")
-def portal_dashboard(token: str, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def portal_dashboard(request: Request, token: str, db: Session = Depends(get_db)):
     """Portal home — greeting, employee summary, and navigation."""
     emp = _get_employee(token, db)
     return _render(
@@ -61,7 +63,8 @@ def portal_dashboard(token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/portal/{token}/paystubs")
-def portal_paystubs(token: str, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def portal_paystubs(request: Request, token: str, db: Session = Depends(get_db)):
     """List the employee's pay stubs (newest first), linking to the PDF."""
     emp = _get_employee(token, db)
     stubs = [
@@ -74,7 +77,10 @@ def portal_paystubs(token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/portal/{token}/profile")
-def portal_profile(token: str, saved: int = 0, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def portal_profile(
+    request: Request, token: str, saved: int = 0, db: Session = Depends(get_db)
+):
     """Form pre-filled with the employee's W-4 election and mailing address."""
     emp = _get_employee(token, db)
     return _render(
@@ -87,7 +93,9 @@ def portal_profile(token: str, saved: int = 0, db: Session = Depends(get_db)):
 
 
 @router.post("/portal/{token}/profile")
+@limiter.limit("10/minute")
 def portal_profile_save(
+    request: Request,
     token: str,
     filing_status: str = Form(...),
     multiple_jobs: bool = Form(False),
@@ -123,8 +131,13 @@ def portal_profile_save(
 
 
 @router.get("/portal/{token}/bank")
+@limiter.limit("30/minute")
 def portal_bank(
-    token: str, saved: int = 0, error: str = "", db: Session = Depends(get_db)
+    request: Request,
+    token: str,
+    saved: int = 0,
+    error: str = "",
+    db: Session = Depends(get_db),
 ):
     """List the employee's bank accounts plus an add-account form."""
     emp = _get_employee(token, db)
@@ -147,7 +160,9 @@ def portal_bank(
 
 
 @router.post("/portal/{token}/bank")
+@limiter.limit("10/minute")
 def portal_bank_add(
+    request: Request,
     token: str,
     nickname: str = Form(""),
     account_kind: str = Form(...),
@@ -197,7 +212,10 @@ def portal_bank_add(
 
 
 @router.get("/portal/{token}/pto")
-def portal_pto(token: str, saved: int = 0, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def portal_pto(
+    request: Request, token: str, saved: int = 0, db: Session = Depends(get_db)
+):
     """Show PTO balances, existing requests, and a new-request form."""
     emp = _get_employee(token, db)
     accruals = (
@@ -225,7 +243,9 @@ def portal_pto(token: str, saved: int = 0, db: Session = Depends(get_db)):
 
 
 @router.post("/portal/{token}/pto")
+@limiter.limit("10/minute")
 def portal_pto_request(
+    request: Request,
     token: str,
     start_date: str = Form(...),
     end_date: str = Form(...),

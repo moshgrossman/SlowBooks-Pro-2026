@@ -105,9 +105,43 @@ app = FastAPI(
 
 
 @app.on_event("startup")
-def create_tables():
-    """Create all tables on app startup."""
+def startup_security_checks():
+    """Run security checks and initialize database on startup."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Create tables
     Base.metadata.create_all(bind=engine)
+
+    # Production security checks (fail hard on critical failures)
+    from app.config import APP_DEBUG, DATABASE_URL, PAYROLL_ENCRYPTION_SECRET
+
+    if not APP_DEBUG:
+        # Check 1: Encryption secret must be overridden in production
+        if PAYROLL_ENCRYPTION_SECRET == "slowbooks-dev-payroll-key-change-me":
+            raise RuntimeError(
+                "FATAL: PAYROLL_ENCRYPTION_SECRET has not been set in production. "
+                "All employee bank account data would be decryptable by anyone with the source code. "
+                "Set a unique, strong PAYROLL_ENCRYPTION_SECRET env var before deploying."
+            )
+
+        # Check 2: Database must use TLS in production
+        if not DATABASE_URL.startswith("sqlite"):
+            if "sslmode" not in DATABASE_URL and "ssl" not in DATABASE_URL.lower():
+                raise RuntimeError(
+                    "FATAL: DATABASE_URL does not specify TLS mode in production. "
+                    "Unencrypted database connections leak sensitive financial and payroll data. "
+                    "Add sslmode=require (or sslmode=verify-full for cert validation) to DATABASE_URL. "
+                    "Example: postgresql://user:pass@host:5432/db?sslmode=require"
+                )
+
+        # Check 3: Warn if running without reverse proxy HTTPS
+        logger.warning(
+            "Running in production mode. Ensure this app is behind a TLS-terminating "
+            "reverse proxy (nginx, Envoy, etc.) or all traffic is encrypted. "
+            "All payroll, financial, and employee PII is at risk if transmitted over plain HTTP."
+        )
 
 
 # ---- Rate limiting (Phase 9.7) ----

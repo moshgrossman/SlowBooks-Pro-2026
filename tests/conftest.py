@@ -13,6 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 
 # ---- Environment overrides (must run BEFORE any app imports) ----
+os.environ["APP_DEBUG"] = "true"  # Disable production security checks in test
 os.environ["SESSION_SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["ALLOWED_ORIGINS"] = "http://testserver,http://localhost:3001"
 os.environ["CORS_ALLOW_ORIGINS"] = "http://testserver,http://localhost:3001"

@@ -745,8 +745,6 @@ def generate_form_940(
     Returns a PDF file with federal unemployment tax information.
     """
     # Aggregate FUTA data for all employees
-    from app.services.payroll_service import futa
-
     employees = db.query(Employee).filter(Employee.is_active == True).all()
 
     total_wages_subject_to_futa = Decimal("0")
