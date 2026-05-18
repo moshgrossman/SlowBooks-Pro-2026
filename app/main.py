@@ -93,7 +93,7 @@ from app.routes import auth as auth_routes
 from app.services.auth import get_session_secret
 
 from app.config import CORS_ALLOW_ORIGINS
-from app.database import SessionLocal
+from app.database import SessionLocal, Base, engine
 from app.services.audit import register_audit_hooks
 
 # ORJSONResponse is 2-3x faster than the stdlib json encoder for every /api/* reply.
@@ -102,6 +102,12 @@ app = FastAPI(
     version="2.0.0",
     default_response_class=ORJSONResponse,
 )
+
+
+@app.on_event("startup")
+def create_tables():
+    """Create all tables on app startup."""
+    Base.metadata.create_all(bind=engine)
 
 # ---- Rate limiting (Phase 9.7) ----
 # limiter is defined in app.services.rate_limit so routes can import it
