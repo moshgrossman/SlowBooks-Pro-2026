@@ -19,6 +19,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, ORJSONResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -92,7 +93,7 @@ from app.routes import deductions
 from app.routes import onboarding, portal
 from app.services.auth import get_session_secret
 
-from app.config import CORS_ALLOW_ORIGINS
+from app.config import CORS_ALLOW_ORIGINS, FORCE_HTTPS, HSTS_MAX_AGE
 from app.database import SessionLocal, Base, engine
 from app.services.audit import register_audit_hooks
 
@@ -106,41 +107,37 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup_security_checks():
-    """Run security checks and initialize database on startup."""
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    # Create tables
+    """Fail hard on critical misconfigurations and create DB tables."""
     Base.metadata.create_all(bind=engine)
 
-    # Production security checks (fail hard on critical failures)
     from app.config import APP_DEBUG, DATABASE_URL, PAYROLL_ENCRYPTION_SECRET
 
-    if not APP_DEBUG:
-        # Check 1: Encryption secret must be overridden in production
-        if PAYROLL_ENCRYPTION_SECRET == "slowbooks-dev-payroll-key-change-me":
+    if APP_DEBUG:
+        return
+
+    if PAYROLL_ENCRYPTION_SECRET == "slowbooks-dev-payroll-key-change-me":
+        raise RuntimeError(
+            "FATAL: PAYROLL_ENCRYPTION_SECRET has not been set in production. "
+            "All employee bank account data would be decryptable by anyone with the source code. "
+            "Set a unique, strong PAYROLL_ENCRYPTION_SECRET env var before deploying."
+        )
+
+    if not DATABASE_URL.startswith("sqlite"):
+        if "sslmode" not in DATABASE_URL and "ssl" not in DATABASE_URL.lower():
             raise RuntimeError(
-                "FATAL: PAYROLL_ENCRYPTION_SECRET has not been set in production. "
-                "All employee bank account data would be decryptable by anyone with the source code. "
-                "Set a unique, strong PAYROLL_ENCRYPTION_SECRET env var before deploying."
+                "FATAL: DATABASE_URL does not specify TLS mode in production. "
+                "Unencrypted database connections leak sensitive financial and payroll data. "
+                "Add sslmode=require (or sslmode=verify-full for cert validation) to DATABASE_URL. "
+                "Example: postgresql://user:pass@host:5432/db?sslmode=require"
             )
 
-        # Check 2: Database must use TLS in production
-        if not DATABASE_URL.startswith("sqlite"):
-            if "sslmode" not in DATABASE_URL and "ssl" not in DATABASE_URL.lower():
-                raise RuntimeError(
-                    "FATAL: DATABASE_URL does not specify TLS mode in production. "
-                    "Unencrypted database connections leak sensitive financial and payroll data. "
-                    "Add sslmode=require (or sslmode=verify-full for cert validation) to DATABASE_URL. "
-                    "Example: postgresql://user:pass@host:5432/db?sslmode=require"
-                )
-
-        # Check 3: Warn if running without reverse proxy HTTPS
-        logger.warning(
-            "Running in production mode. Ensure this app is behind a TLS-terminating "
-            "reverse proxy (nginx, Envoy, etc.) or all traffic is encrypted. "
-            "All payroll, financial, and employee PII is at risk if transmitted over plain HTTP."
+    if not FORCE_HTTPS:
+        raise RuntimeError(
+            "FATAL: FORCE_HTTPS=false in production. Plain-HTTP traffic leaks "
+            "session cookies, portal tokens, and bank PII over the wire. Set "
+            "FORCE_HTTPS=true (default in production) so the app redirects plain "
+            "HTTP to HTTPS and emits HSTS. If terminating TLS at a proxy, the "
+            "redirect becomes a no-op."
         )
 
 
@@ -168,14 +165,65 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 
 
+# Content-Security-Policy: defense in depth against XSS even if autoescape
+# misses a sink. 'self' for scripts/styles + 'unsafe-inline' for the inline
+# bootstrap script in index.html. Tighten to a nonce-based CSP once the SPA
+# is migrated off inline scripts.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://js.stripe.com; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self' data:; "
+    "connect-src 'self' https://api.stripe.com; "
+    "frame-src https://js.stripe.com https://hooks.stripe.com; "
+    "frame-ancestors 'none'; "
+    "form-action 'self'; "
+    "base-uri 'self'; "
+    "object-src 'none'"
+)
+
+
+def _set_if_unset(headers, name: str, value: str) -> None:
+    """Only write a header the route handler did not already set. Lets
+    sensitive routes (portal, public pay page) opt into stricter values
+    like Referrer-Policy: no-referrer."""
+    if name not in headers:
+        headers[name] = value
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    _set_if_unset(response.headers, "X-Content-Type-Options", "nosniff")
+    _set_if_unset(response.headers, "X-Frame-Options", "DENY")
+    _set_if_unset(
+        response.headers, "Referrer-Policy", "strict-origin-when-cross-origin"
+    )
+    _set_if_unset(
+        response.headers,
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=()",
+    )
+    _set_if_unset(response.headers, "Content-Security-Policy", _CSP)
+    # HSTS instructs browsers to refuse plain HTTP for HSTS_MAX_AGE seconds.
+    # Only emit when HTTPS is actually enforced; sending it under plain HTTP
+    # would lock users out if they later visit via http://.
+    if FORCE_HTTPS:
+        _set_if_unset(
+            response.headers,
+            "Strict-Transport-Security",
+            f"max-age={HSTS_MAX_AGE}; includeSubDomains; preload",
+        )
     return response
+
+
+# Promote any plain-HTTP request to HTTPS before it touches the app. Added
+# BEFORE other middleware so it runs LAST in the response chain — i.e. the
+# OUTERMOST request gate. Behind a TLS-terminating proxy this is a no-op
+# because the proxy already speaks HTTPS to the app.
+if FORCE_HTTPS:
+    app.add_middleware(HTTPSRedirectMiddleware)
 
 
 # ---- Auth gate (Phase 9.7) ----
@@ -226,7 +274,10 @@ app.add_middleware(
     session_cookie="slowbooks_session",
     max_age=60 * 60 * 24 * 30,
     same_site="strict",
-    https_only=False,  # LAN deploys often run plain HTTP; flip to True behind TLS proxy
+    # Cookie carries the Secure flag whenever HTTPS is enforced. Tied to the
+    # same env var as the redirect middleware so the two stay in lockstep:
+    # if the app insists on HTTPS, the session cookie must too.
+    https_only=FORCE_HTTPS,
 )
 
 # Phase 9.7: Auth routes MUST be included (they're exempt from the session gate)

@@ -4,7 +4,7 @@
 # ============================================================================
 
 import secrets
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
@@ -12,25 +12,13 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.payroll import Employee
 from app.models.attachments import Attachment
 from app.models.bank_accounts import (
     EmployeeBankAccount,
     BankAccountKind,
     DepositType,
 )
-from app.schemas.payroll import (
-    EmployeeCreate,
-    EmployeeUpdate,
-    EmployeeResponse,
-    BankAccountCreate,
-    BankAccountResponse,
-    YTDResponse,
-)
-from app.schemas.hr import EmployeeDocumentResponse
-from app.services.encryption import encrypt
-from app.services.onboarding import seed_onboarding_tasks
-from app.routes.payroll import employee_ytd
+from app.models.payroll import Employee
 from app.routes.attachments import (
     _sanitize_filename,
     _resolve_within,
@@ -39,6 +27,43 @@ from app.routes.attachments import (
     ALLOWED_EXTENSIONS,
     ALLOWED_MIME_TYPES,
 )
+from app.routes.payroll import employee_ytd
+from app.schemas.hr import EmployeeDocumentResponse
+from app.schemas.payroll import (
+    EmployeeCreate,
+    EmployeeUpdate,
+    EmployeeResponse,
+    BankAccountCreate,
+    BankAccountResponse,
+    YTDResponse,
+)
+from app.services.encryption import encrypt
+from app.services.onboarding import seed_onboarding_tasks
+
+# Portal tokens get a 1-year hard expiry on top of the 90-day idle window
+# enforced in app/routes/portal.py. Hard expiry forces periodic re-issuance
+# even for an employee who logs in regularly.
+_PORTAL_TOKEN_LIFETIME = timedelta(days=365)
+
+
+def _mint_portal_token(emp: Employee) -> None:
+    """Assign a fresh portal token plus its idle and hard expiry timestamps."""
+    now = datetime.now(timezone.utc)
+    emp.portal_token = secrets.token_urlsafe(24)
+    emp.portal_token_last_used = now
+    emp.portal_token_expires_at = now + _PORTAL_TOKEN_LIFETIME
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    """Serialize a (possibly naive) timestamp as an ISO-8601 UTC string. SQLite
+    drops tzinfo on round-trip; we restore it so API consumers don't have to
+    guess what timezone the stored datetime is in."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 
@@ -63,7 +88,7 @@ def get_employee(emp_id: int, db: Session = Depends(get_db)):
 def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
     emp = Employee(**data.model_dump())
     # Every new hire gets a self-service portal token and an onboarding checklist.
-    emp.portal_token = secrets.token_urlsafe(24)
+    _mint_portal_token(emp)
     db.add(emp)
     db.flush()
     seed_onboarding_tasks(db, emp.id)
@@ -92,12 +117,13 @@ def get_portal_token(emp_id: int, db: Session = Depends(get_db)):
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     if not emp.portal_token:
-        emp.portal_token = secrets.token_urlsafe(24)
+        _mint_portal_token(emp)
         db.commit()
     return {
         "employee_id": emp.id,
         "portal_token": emp.portal_token,
         "portal_url": f"/portal/{emp.portal_token}",
+        "expires_at": _iso_utc(emp.portal_token_expires_at),
     }
 
 
@@ -107,12 +133,13 @@ def regenerate_portal_token(emp_id: int, db: Session = Depends(get_db)):
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    emp.portal_token = secrets.token_urlsafe(24)
+    _mint_portal_token(emp)
     db.commit()
     return {
         "employee_id": emp.id,
         "portal_token": emp.portal_token,
         "portal_url": f"/portal/{emp.portal_token}",
+        "expires_at": _iso_utc(emp.portal_token_expires_at),
     }
 
 

@@ -126,8 +126,14 @@ class Employee(Base):
     role = Column(Enum(EmployeeRole), default=EmployeeRole.EMPLOYEE)
     manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
     # Secret used for token-based access to the self-service portal — the same
-    # pattern as the public invoice-payment page.
+    # pattern as the public invoice-payment page. The companion timestamps
+    # cap the blast radius if a URL leaks: tokens expire after 90 days of
+    # inactivity (last_used rolls forward on every authenticated request) or
+    # 1 year hard. Rotating the token via POST /api/employees/{id}/portal-token
+    # bumps both columns to 'now' + the windows.
     portal_token = Column(String(64), nullable=True, unique=True)
+    portal_token_last_used = Column(DateTime(timezone=True), nullable=True)
+    portal_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     everify_case_number = Column(String(30), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

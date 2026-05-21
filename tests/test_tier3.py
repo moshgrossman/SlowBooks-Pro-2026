@@ -8,7 +8,7 @@ Tests the complete Tier 3 payroll/HR system:
 """
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -18,6 +18,7 @@ from app.models.payroll import Employee, PayRun, PayStub
 from app.models.pto import PTOPolicy, PTORequest, PTOType, PTORequestStatus, PTOAccrual
 from app.models.bank_accounts import EmployeeBankAccount, BankAccountKind, DepositType
 from app.routes.payroll import employee_ytd
+from app.services.encryption import encrypt, decrypt
 
 # --- Tier 3: Tax Forms -------------------------------------------------------
 
@@ -484,3 +485,153 @@ def test_tier3_complete_workflow(client: any, db_session: Session, seed_accounts
 
     accounts = db_session.query(EmployeeBankAccount).filter_by(employee_id=emp.id).all()
     assert len(accounts) == 1
+
+
+# --- Tier 3: Security Hardening ---------------------------------------------
+
+
+def test_portal_token_hard_expiry_blocks_access(client: any, db_session: Session):
+    """A token past its hard expiry returns 410 Gone, not the dashboard."""
+    emp = Employee(
+        first_name="Expired",
+        last_name="Token",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+        portal_token="expired-token-fixture",
+        portal_token_last_used=datetime.now(timezone.utc),
+        portal_token_expires_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    r = client.get("/portal/expired-token-fixture")
+    assert r.status_code == 410
+
+
+def test_portal_token_idle_expiry_blocks_access(client: any, db_session: Session):
+    """A token unused for >90 days returns 410, even if not past hard expiry."""
+    emp = Employee(
+        first_name="Idle",
+        last_name="Token",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+        portal_token="idle-token-fixture",
+        portal_token_last_used=datetime.now(timezone.utc) - timedelta(days=91),
+        portal_token_expires_at=datetime.now(timezone.utc) + timedelta(days=300),
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    r = client.get("/portal/idle-token-fixture")
+    assert r.status_code == 410
+
+
+def test_portal_last_used_rolls_forward_on_access(client: any, db_session: Session):
+    """Every authenticated portal request updates last_used to 'now'."""
+    old = datetime.now(timezone.utc) - timedelta(days=30)
+    emp = Employee(
+        first_name="Active",
+        last_name="User",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+        portal_token="active-token-fixture",
+        portal_token_last_used=old,
+        portal_token_expires_at=datetime.now(timezone.utc) + timedelta(days=300),
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    r = client.get("/portal/active-token-fixture")
+    assert r.status_code == 200
+
+    db_session.refresh(emp)
+    last_used = emp.portal_token_last_used
+    if last_used.tzinfo is None:
+        last_used = last_used.replace(tzinfo=timezone.utc)
+    assert last_used > old + timedelta(days=29)
+
+
+def test_portal_responses_send_no_referrer_header(client: any, db_session: Session):
+    """Portal HTML pages must not leak the URL token via Referer."""
+    emp = Employee(
+        first_name="Refer",
+        last_name="Block",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    token = client.get(f"/api/employees/{emp.id}/portal-token").json()["portal_token"]
+    r = client.get(f"/portal/{token}")
+    assert r.status_code == 200
+    assert r.headers.get("referrer-policy") == "no-referrer"
+    assert "no-store" in r.headers.get("cache-control", "")
+
+
+def test_portal_token_mint_sets_expiry(client: any, db_session: Session):
+    """Newly minted tokens carry an expires_at roughly 1 year out."""
+    emp = Employee(
+        first_name="Fresh",
+        last_name="Token",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    payload = client.get(f"/api/employees/{emp.id}/portal-token").json()
+    assert payload["expires_at"] is not None
+    expires = datetime.fromisoformat(payload["expires_at"])
+    delta = expires - datetime.now(timezone.utc)
+    assert timedelta(days=360) < delta < timedelta(days=370)
+
+
+def test_security_headers_present(client: any):
+    """CSP and frame-ancestors must appear on every response."""
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.headers.get("x-content-type-options") == "nosniff"
+    assert r.headers.get("x-frame-options") == "DENY"
+    csp = r.headers.get("content-security-policy") or ""
+    assert "frame-ancestors 'none'" in csp
+    assert "object-src 'none'" in csp
+
+
+def test_encryption_roundtrip_with_version_prefix():
+    """Ciphertext carries a v{N}: prefix and roundtrips back to plaintext."""
+    plaintext = "987654321"
+    ct = encrypt(plaintext)
+    assert ct is not None
+    assert ct.startswith("v1:")
+    assert decrypt(ct) == plaintext
+
+
+def test_encryption_decrypts_legacy_unprefixed_ciphertext():
+    """Pre-versioning ciphertext (no v{N}: prefix) still decrypts cleanly."""
+    plaintext = "123456789"
+    versioned = encrypt(plaintext)
+    legacy = versioned[len("v1:") :]
+    assert decrypt(legacy) == plaintext
+
+
+def test_encryption_returns_none_for_garbage():
+    """Tampered ciphertext returns None instead of raising or leaking."""
+    assert decrypt("v1:not-a-real-fernet-token") is None
+    assert decrypt("") is None
+    assert decrypt(None) is None

@@ -21,6 +21,17 @@ APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("APP_PORT", "3001"))
 APP_DEBUG = os.getenv("APP_DEBUG", "false").lower() == "true"
 
+# ---- HTTPS / Transport Security ----
+# FORCE_HTTPS=true enables app-level HTTPS redirect + Strict-Transport-Security.
+# Defaults to True in production (APP_DEBUG=false). Set to False only when you
+# know a proxy in front already terminates TLS and you do NOT want the app to
+# 308-redirect plain HTTP (e.g. health-check probes from inside a VPC).
+FORCE_HTTPS = (
+    os.getenv("FORCE_HTTPS", "false" if APP_DEBUG else "true").lower() == "true"
+)
+# Two years is the HSTS preload-list minimum (and the value most browsers cache).
+HSTS_MAX_AGE = int(os.getenv("HSTS_MAX_AGE", "63072000"))
+
 
 def resolve_cors_origins(env: dict | None = None) -> list[str]:
     """Return the explicit CORS origin allowlist for the FastAPI app.

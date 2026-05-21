@@ -5,7 +5,7 @@
 # same pattern as the public invoice-payment page (no login system).
 # ============================================================================
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -25,19 +25,68 @@ router = APIRouter(tags=["portal"])
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _jinja_env = Environment(autoescape=True, loader=FileSystemLoader(str(TEMPLATE_DIR)))
 
+# Idle window: a token unused for this long is treated as revoked. Sliding
+# window — every authenticated request rolls last_used forward.
+PORTAL_TOKEN_IDLE_DAYS = 90
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """Treat naive datetimes as UTC. SQLite returns naive timestamps even when
+    we wrote them with tzinfo; PostgreSQL returns tz-aware. Normalize so
+    comparisons against _now() never raise TypeError."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
 
 def _get_employee(token: str, db: Session) -> Employee:
-    """Resolve a portal token to an active employee, or raise 404."""
+    """Resolve a portal token to an active, non-expired employee, or 404.
+
+    Updates `portal_token_last_used` on every successful lookup, implementing
+    a 90-day sliding-window idle expiry. Hard expiry is enforced via
+    `portal_token_expires_at`, set when the token is minted.
+    """
     employee = db.query(Employee).filter(Employee.portal_token == token).first()
     if not employee or not employee.is_active:
         raise HTTPException(status_code=404, detail="Portal not found")
+
+    now = _now()
+    if (
+        employee.portal_token_expires_at
+        and _to_utc(employee.portal_token_expires_at) < now
+    ):
+        raise HTTPException(status_code=410, detail="Portal token has expired")
+    if employee.portal_token_last_used is not None:
+        idle_cutoff = now - timedelta(days=PORTAL_TOKEN_IDLE_DAYS)
+        if _to_utc(employee.portal_token_last_used) < idle_cutoff:
+            raise HTTPException(status_code=410, detail="Portal token has expired")
+
+    employee.portal_token_last_used = now
+    db.commit()
     return employee
 
 
+# Portal pages need a tighter Referrer-Policy than the app default — the token
+# is in the URL, and any cross-origin click could otherwise leak it. We add
+# per-response headers in _render() so a portal page can never be referred
+# from with a URL that contains the token.
+_PORTAL_HEADERS = {
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store, max-age=0",
+}
+
+
 def _render(name: str, **ctx) -> HTMLResponse:
-    """Render a portal template to an HTMLResponse."""
+    """Render a portal template to an HTMLResponse with no-referrer headers."""
     template = _jinja_env.get_template(f"portal/{name}")
-    return HTMLResponse(template.render(**ctx))
+    return HTMLResponse(template.render(**ctx), headers=_PORTAL_HEADERS)
+
+
+def _portal_redirect(url: str) -> RedirectResponse:
+    """Redirect with the same no-referrer + no-store headers as portal pages."""
+    return RedirectResponse(url=url, status_code=303, headers=_PORTAL_HEADERS)
 
 
 def _processed_stub_count(emp: Employee) -> int:
@@ -127,7 +176,7 @@ def portal_profile_save(
     emp.state = state or None
     emp.zip = zip or None
     db.commit()
-    return RedirectResponse(url=f"/portal/{token}/profile?saved=1", status_code=303)
+    return _portal_redirect(f"/portal/{token}/profile?saved=1")
 
 
 @router.get("/portal/{token}/bank")
@@ -177,23 +226,18 @@ def portal_bank_add(
     routing = routing_number.strip()
     account = account_number.strip()
     if not (routing.isdigit() and len(routing) == 9):
-        return RedirectResponse(
-            url=f"/portal/{token}/bank?error=Routing+number+must+be+9+digits",
-            status_code=303,
+        return _portal_redirect(
+            f"/portal/{token}/bank?error=Routing+number+must+be+9+digits"
         )
     if not account.isdigit():
-        return RedirectResponse(
-            url=f"/portal/{token}/bank?error=Account+number+must+be+numeric",
-            status_code=303,
+        return _portal_redirect(
+            f"/portal/{token}/bank?error=Account+number+must+be+numeric"
         )
     try:
         kind = BankAccountKind(account_kind)
         dtype = DepositType(deposit_type)
     except ValueError:
-        return RedirectResponse(
-            url=f"/portal/{token}/bank?error=Invalid+selection",
-            status_code=303,
-        )
+        return _portal_redirect(f"/portal/{token}/bank?error=Invalid+selection")
 
     db.add(
         EmployeeBankAccount(
@@ -208,7 +252,7 @@ def portal_bank_add(
         )
     )
     db.commit()
-    return RedirectResponse(url=f"/portal/{token}/bank?saved=1", status_code=303)
+    return _portal_redirect(f"/portal/{token}/bank?saved=1")
 
 
 @router.get("/portal/{token}/pto")
@@ -277,4 +321,4 @@ def portal_pto_request(
         )
     )
     db.commit()
-    return RedirectResponse(url=f"/portal/{token}/pto?saved=1", status_code=303)
+    return _portal_redirect(f"/portal/{token}/pto?saved=1")
