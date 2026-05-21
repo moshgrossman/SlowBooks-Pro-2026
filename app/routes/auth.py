@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.auth import LoginAttempt
 from app.services.auth import (
     check_password,
     password_is_set,
@@ -27,6 +28,34 @@ from app.services.rate_limit import limiter
 from app.services.settings_service import set_setting
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP. Trusts X-Forwarded-For only when present —
+    deployments behind nginx/Traefik set it; direct deploys fall back to
+    the socket peer."""
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        # Take the first hop — that's the client (proxies append to the right).
+        return fwd.split(",")[0].strip()[:45]
+    client = request.client
+    return (client.host if client else "")[:45]
+
+
+def _record_login_attempt(db: Session, request: Request, success: bool) -> None:
+    """Insert a row into login_attempts. Failures aren't fatal — never let
+    audit-log writes break the auth flow itself."""
+    try:
+        db.add(
+            LoginAttempt(
+                ip=_client_ip(request),
+                user_agent=(request.headers.get("user-agent") or "")[:255],
+                success=success,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 class PasswordPayload(BaseModel):
@@ -113,6 +142,11 @@ def setup(
             set_setting(db, key, value)
 
     set_password(db, payload.password)
+    # Rotate session before issuing — clears anything an attacker might have
+    # planted via a fixation attempt. Starlette's signed-cookie session is
+    # already fixation-resistant (signature changes with payload) but this
+    # is defence in depth and intent-revealing.
+    request.session.clear()
     request.session["authenticated"] = True
     return {"status": "ok", "authenticated": True}
 
@@ -126,8 +160,10 @@ def login(
 ):
     """Verify the operator password and issue a session.
 
-    Rate-limited to 5/minute per IP to kill brute-force. argon2id's
-    ~100ms-per-verify cost is the second line of defence.
+    Rate-limited to 5/minute per IP to kill fast brute-force. argon2id's
+    ~100ms-per-verify cost is the second line. Every attempt — success or
+    failure — is recorded in `login_attempts` so a slow patient attacker
+    pacing requests under the rate limit still shows up in the audit log.
     """
     if not password_is_set(db):
         raise HTTPException(
@@ -135,10 +171,14 @@ def login(
             detail="Setup required — set a password first",
         )
     if not check_password(db, payload.password):
+        _record_login_attempt(db, request, success=False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password",
         )
+    _record_login_attempt(db, request, success=True)
+    # Same rotation rationale as /setup.
+    request.session.clear()
     request.session["authenticated"] = True
     return {"status": "ok", "authenticated": True}
 

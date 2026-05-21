@@ -18,6 +18,7 @@ os.environ["SESSION_SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["ALLOWED_ORIGINS"] = "http://testserver,http://localhost:3001"
 os.environ["CORS_ALLOW_ORIGINS"] = "http://testserver,http://localhost:3001"
 os.environ["RATE_LIMIT_ENABLED"] = "0"
+os.environ["SESSION_IDLE_TIMEOUT_SECONDS"] = "0"  # Disable idle expiry in tests
 # Point the app at an in-memory DB by default; fixtures override per-test.
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
@@ -35,6 +36,7 @@ from app.models import (  # noqa: F401
     accounts,
     attachments,
     audit,
+    auth as auth_model,
     backups,
     banking,
     bank_accounts,

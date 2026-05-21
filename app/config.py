@@ -32,6 +32,14 @@ FORCE_HTTPS = (
 # Two years is the HSTS preload-list minimum (and the value most browsers cache).
 HSTS_MAX_AGE = int(os.getenv("HSTS_MAX_AGE", "63072000"))
 
+# ---- Session idle timeout ----
+# Sliding-window inactivity cap on the session cookie. The cookie itself has
+# a 30-day hard expiry; this trims long-lived idle sessions on top of that.
+# Set to 0 to disable (useful for local dev and the test harness).
+SESSION_IDLE_TIMEOUT_SECONDS = int(
+    os.getenv("SESSION_IDLE_TIMEOUT_SECONDS", "14400")  # 4 hours
+)
+
 
 def resolve_cors_origins(env: dict | None = None) -> list[str]:
     """Return the explicit CORS origin allowlist for the FastAPI app.

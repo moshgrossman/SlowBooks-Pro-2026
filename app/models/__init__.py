@@ -27,6 +27,7 @@ from app.models.tax import TaxCategoryMapping
 from app.models.backups import Backup
 
 # Phase 6: Ambitious
+from app.models.auth import LoginAttempt
 from app.models.companies import Company
 from app.models.payroll import Employee, PayRun, PayStub
 
@@ -118,4 +119,6 @@ __all__ = [
     # Phase 11
     "InventoryMovement",
     "SavedReport",
+    # Auth audit
+    "LoginAttempt",
 ]

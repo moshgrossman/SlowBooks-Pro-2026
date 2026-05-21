@@ -93,7 +93,12 @@ from app.routes import deductions
 from app.routes import onboarding, portal
 from app.services.auth import get_session_secret
 
-from app.config import CORS_ALLOW_ORIGINS, FORCE_HTTPS, HSTS_MAX_AGE
+from app.config import (
+    CORS_ALLOW_ORIGINS,
+    FORCE_HTTPS,
+    HSTS_MAX_AGE,
+    SESSION_IDLE_TIMEOUT_SECONDS,
+)
 from app.database import SessionLocal, Base, engine
 from app.services.audit import register_audit_hooks
 
@@ -251,6 +256,9 @@ _AUTH_EXEMPT_EXACT = {
 }
 
 
+import time as _time
+
+
 @app.middleware("http")
 async def require_session(request: Request, call_next):
     path = request.url.path
@@ -261,6 +269,21 @@ async def require_session(request: Request, call_next):
             status_code=401,
             content={"detail": "Not authenticated"},
         )
+
+    # Idle session cap. Sliding window — every authenticated hit refreshes
+    # `last_activity`, so a session that's actively in use never trips this.
+    # Disabled when SESSION_IDLE_TIMEOUT_SECONDS = 0 (test harness, dev).
+    if SESSION_IDLE_TIMEOUT_SECONDS > 0:
+        now = int(_time.time())
+        last = request.session.get("last_activity")
+        if isinstance(last, int) and (now - last) > SESSION_IDLE_TIMEOUT_SECONDS:
+            request.session.clear()
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Session expired (idle timeout)"},
+            )
+        request.session["last_activity"] = now
+
     return await call_next(request)
 
 
