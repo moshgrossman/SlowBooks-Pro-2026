@@ -66,38 +66,12 @@ See the [release notes on GitHub](https://github.com/VonHoltenCodes/SlowBooks-Pr
 - **Account Balances** — Updated in real-time as transactions post
 
 ### Payroll & HR
+- **Core payroll** — pay runs with federal/state/FICA withholding, balanced journal entries, pay stubs, YTD totals, encrypted ACH direct deposit, gross-up calculator, supplemental wages, multi-state withholding
+- **HR** — 8-task onboarding checklist with e-signature, time tracking with approve/reject, PTO policies + requests with accrual draw-down, pre/post-tax deductions, court-ordered garnishments
+- **Tax forms** — W-2, W-3, Form 940 (FUTA), Form 941 (FICA) endpoints (returning JSON; WeasyPrint PDF rendering is pending)
+- **Self-service portal** — token-accessed at `/portal/{token}` — pay stubs, W-4 updates, direct-deposit setup, PTO requests; branded with the employer's logo and company name
 
-**Core payroll**
-- **Employees** — Full records with 2020 Form W-4 fields (filing status, dependents, other income, deductions, extra withholding), address, work state, hire date, manager, role, contact info
-- **Pay runs** — Automatic withholding: Federal (progressive brackets per W-4), state (per-state), Social Security (6.2%), Medicare (1.45%), plus garnishments and pre/post-tax deductions
-- **Processing** — One-click runs create balanced journal entries (DR Wage Expense, CR Withholding/Payable/Deductions/Bank)
-- **Pay stubs** — Gross, deductions, taxes, and net-pay breakdowns
-- **YTD totals** — Per-employee year-to-date gross, federal, state, SS, Medicare, and net
-- **Direct deposit** — Encrypted bank routing/account numbers for ACH
-- **Gross-up calculator** — Solve for target net when withholdings vary
-- **Supplemental wages** — Off-cycle bonuses (flat 22% or aggregate method)
-- **Multi-state withholding** — Per-stub work-state override for employees working across states
-- Tax calculations are approximate — verify with a tax professional
-
-**HR module**
-- **Onboarding** — 8-task employee checklist (I-9, tax forms, direct deposit, benefits, handbook, training, equipment, system access) with e-signature and downloadable new-hire PDFs
-- **Time tracking** — Hours by date and work state with manager approve/reject workflow; supports regular, overtime, and double-time
-- **PTO management** — Configurable policies (vacation, sick, personal) with accrual rates and carryover caps; employees request, managers decide, balances auto-deducted
-- **Deductions** — 401k, health insurance, HSA, Roth, union dues — pre-tax or post-tax, per-employee with effective dates
-- **Garnishments** — Court-ordered orders with priority rules (child support > creditor) and 25%-of-disposable-earnings cap
-- **Non-taxable reimbursements** — Accountable-plan expense reimbursements
-
-**Tax forms**
-- **W-2 / W-3** — Individual and summary forms from YTD payroll
-- **Form 940 (FUTA)** — Federal unemployment tax, auto-calculated from payroll
-- **Form 941 (FICA)** — Quarterly employment tax with monthly/quarterly aggregation
-- **I-9 storage** — Per-employee I-9 verification document vault
-- Endpoints return JSON ready for e-file or PDF rendering; WeasyPrint templates are the pending piece
-
-**Self-service portal**
-- Token-accessed dashboard at `/portal/{token}` — no company password required
-- View pay stubs, check PTO balance, submit PTO requests, update W-4, add direct-deposit accounts
-- Tokens are 192-bit, expire after 90 days idle or 1 year hard, rate-limited per IP, and emit `Referrer-Policy: no-referrer` so URLs don't leak via the `Referer` header
+Tax calculations are approximate — verify with a tax professional. Full module reference (models, routes, UI pages, pending items) lives at [docs/payroll-hr-module.md](docs/payroll-hr-module.md).
 
 ### Banking
 - **Bank Accounts** — Register view with deposits and withdrawals
@@ -324,21 +298,13 @@ curl http://localhost:3001/api/analytics/export.pdf > snapshot.pdf
 - **Saved reports** — Full CRUD on named `(report_type, parameters)` tuples at `/api/saved-reports`. Lets users one-click rerun their favorite P&L, Balance Sheet, or account drill-down without re-entering dates
 
 ### Security & Authentication
-- **Single-user authentication** — Argon2id-hashed password, session cookie (`same_site=strict`, 30-day TTL, `Secure` when `FORCE_HTTPS=true`)
-- **App-level HTTPS** — `HTTPSRedirectMiddleware` + HSTS (2-year, includeSubDomains, preload) when `FORCE_HTTPS=true` (default in production)
-- **Startup fail-hard checks** — process exits in production if `PAYROLL_ENCRYPTION_SECRET` is the dev default, `DATABASE_URL` lacks `sslmode`, or `FORCE_HTTPS=false`
-- **Security headers** — `Content-Security-Policy` (frame-ancestors none, object-src none, form-action self), X-Content-Type-Options, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy on all responses (routes can opt into stricter values via setdefault semantics)
-- **CORS lockdown** — explicit origin allowlist (no wildcards), localhost by default, configurable via `CORS_ALLOW_ORIGINS`
-- **Rate limiting** — slowapi; 5/min on login, 30/10 per minute on portal GET/POST; toggle via `RATE_LIMIT_ENABLED`
-- **Path traversal protection** — backup and attachment endpoints validated with `Path.is_relative_to()`
-- **Field-level encryption** — bank routing/account numbers Fernet-encrypted at rest (AES-128-CBC + HMAC, PBKDF2-SHA256 480k iterations), versioned ciphertext supports zero-downtime key rotation via `PAYROLL_ENCRYPTION_SECRET_PREV`
-- **Portal token hardening** — 192-bit `secrets.token_urlsafe(24)` with 90-day idle + 1-year hard expiry; portal pages emit `Referrer-Policy: no-referrer` and `Cache-Control: no-store`
-- **Sensitive key filtering** — password hashes and session secrets never returned from the settings API
-- **Atomic secret writes** — session key uses `mkstemp` + `os.replace()` to prevent race conditions
-- **Non-root Docker** — container runs as `slowbooks` user (UID 1000)
-- **Pinned dependencies** — all `requirements.txt` entries have upper-bound version caps
+- Single-user authentication with Argon2id password hashing and rate-limited login
+- App-level HTTPS redirect, HSTS, and `Secure` session cookie when `FORCE_HTTPS=true`
+- Field-level Fernet encryption for bank routing/account numbers, with zero-downtime key rotation
+- Self-service portal tokens expire on 90-day idle + 1-year hard windows
+- Startup checks fail hard if production config is missing TLS, encryption secret, or HTTPS
 
-See [docs/security-hardening.md](docs/security-hardening.md) for the full engineering log.
+Canonical list of security measures lives in [SECURITY.md](SECURITY.md); engineering log of the hardening pass is at [docs/security-hardening.md](docs/security-hardening.md).
 
 ### System & Administration
 - **Dark Mode** — Toggle between QB2003 Blue theme and dark mode (Alt+D or toolbar button). Persists in localStorage
@@ -668,45 +634,9 @@ All endpoints under `/api/`. Swagger docs at `/docs`. 213+ routes across 44 rout
 | `/api/payroll/{id}/process` | POST | Process pay run (creates balanced journal entries) |
 | `/api/payroll/{id}/nacha` | POST | Generate NACHA ACH file for direct deposit |
 
-### HR: Onboarding & Time Tracking
-| Endpoint | Methods | Description |
-|----------|---------|-------------|
-| `/api/onboarding/{emp_id}` | GET, POST | Onboarding checklist with 8 tasks |
-| `/api/onboarding/tasks/{task_id}` | PUT | Mark task complete |
-| `/api/onboarding/tasks/{task_id}/complete` | POST | Complete task with signature |
-| `/api/onboarding/{emp_id}/new-hire-report` | GET | JSON new-hire report with checklists |
-| `/api/onboarding/{emp_id}/new-hire-report/pdf` | GET | PDF new-hire report for filing |
-| `/api/time-entries` | GET, POST | Time entry CRUD with employee filter |
-| `/api/time-entries/{id}/approve` | POST | Manager approval workflow |
-| `/api/time-entries/{id}/reject` | POST | Manager rejection with reason |
-| `/api/pto/policies` | GET, POST, PUT | PTO policy CRUD (vacation, sick, personal) |
-| `/api/pto/requests` | GET, POST | Employee PTO requests with pending/approved/denied status |
-| `/api/pto/requests/{id}/approve` | POST | Manager PTO approval |
-| `/api/pto/requests/{id}/reject` | POST | Manager PTO rejection |
+### Payroll & HR
 
-### HR: Deductions & Garnishments
-| Endpoint | Methods | Description |
-|----------|---------|-------------|
-| `/api/deductions/types` | GET, POST | Seed deduction types (401k, health, union, etc.) |
-| `/api/deductions/employee/{emp_id}` | GET, POST, DELETE | Per-employee deductions |
-| `/api/deductions/garnishments` | GET, POST, DELETE | Court-ordered garnishments with priority |
-| `/api/payroll/gross-up` | POST | Solve for target net after all withholdings |
-
-### HR: Tax Form Generation
-| Endpoint | Methods | Description |
-|----------|---------|-------------|
-| `/api/payroll/forms/w2/{emp_id}` | POST | Generate W-2 form JSON (year param required) |
-| `/api/payroll/forms/w3/{year}` | POST | Generate W-3 summary form JSON |
-| `/api/payroll/forms/940/{year}` | POST | Generate Form 940 (FUTA) JSON |
-| `/api/payroll/forms/941/{year}/{quarter}` | POST | Generate Form 941 (quarterly FICA) JSON |
-
-### Employee Self-Service Portal
-| Endpoint | Methods | Auth | Description |
-|----------|---------|------|-------------|
-| `/portal/{token}` | GET | Token-based | Employee dashboard (no company login) |
-| `/api/portal/{token}/pay-stubs` | GET | Token-based | Employee's pay stubs for all periods |
-| `/api/portal/{token}/pto-balance` | GET | Token-based | Current PTO accrual balance |
-| `/api/portal/{token}/pto-request` | POST | Token-based | Employee submits PTO request |
+All payroll, HR, tax-form, and self-service portal endpoints are documented with a complete method-and-path table in [docs/payroll-hr-module.md](docs/payroll-hr-module.md).
 
 ### Banking & Deposits
 | Endpoint | Methods | Description |
