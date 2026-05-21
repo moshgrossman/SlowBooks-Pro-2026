@@ -146,17 +146,21 @@ def compute_w3(db, year: int) -> dict:
     }
 
 
-def generate_w2_pdf(db, year: int, employee_id: int, company: dict) -> bytes:
-    """Render a single employee's W-2 to a PDF."""
+def generate_w2_pdf(
+    db, year: int, employee_id: int, company: dict, audit: dict | None = None
+) -> bytes:
+    """Render a single employee's W-2 to a PDF. `audit` carries the audit-row
+    id/hash/timestamp the footer prints; the caller computes it via
+    services.document_audit."""
     data = compute_w2(db, year, employee_id)
     template = _jinja_env.get_template("w2.html")
-    html_str = template.render(data=data, company=company or {})
+    html_str = template.render(data=data, company=company or {}, audit=audit or {})
     return HTML(string=html_str, url_fetcher=_safe_url_fetcher).write_pdf()
 
 
-def generate_w3_pdf(db, year: int, company: dict) -> bytes:
+def generate_w3_pdf(db, year: int, company: dict, audit: dict | None = None) -> bytes:
     """Render the W-3 transmittal (aggregate across all W-2s) to a PDF."""
     data = compute_w3(db, year)
     template = _jinja_env.get_template("w3.html")
-    html_str = template.render(data=data, company=company or {})
+    html_str = template.render(data=data, company=company or {}, audit=audit or {})
     return HTML(string=html_str, url_fetcher=_safe_url_fetcher).write_pdf()

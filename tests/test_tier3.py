@@ -241,6 +241,129 @@ def test_form_941_pdf_rejects_invalid_quarter(client: any):
     assert r.status_code == 400
 
 
+# --- Tier 3: Document audit hashing for tax forms ---------------------------
+
+
+def test_w2_pdf_writes_audit_row(client: any, db_session: Session):
+    """Rendering a W-2 PDF inserts a document_audits row with a SHA-256
+    over the canonical (company, data) payload."""
+    from app.models.document_audit import DocumentAudit
+
+    emp = Employee(
+        first_name="Hash",
+        last_name="Test",
+        ssn_last_four="9999",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    r = client.post(f"/api/payroll/forms/w2/{emp.id}/pdf?year=2026")
+    assert r.status_code == 200
+
+    rows = (
+        db_session.query(DocumentAudit)
+        .filter(DocumentAudit.doc_type == "w2")
+        .order_by(DocumentAudit.id.desc())
+        .all()
+    )
+    assert len(rows) >= 1
+    last = rows[0]
+    assert last.doc_key == f"emp{emp.id}-yr2026"
+    assert len(last.content_hash) == 64
+    assert all(c in "0123456789abcdef" for c in last.content_hash)
+
+
+def test_audit_lookup_endpoint_round_trip(client: any, db_session: Session):
+    """The /api/document-audits/{id} endpoint returns the row the PDF
+    footer points at, and the /verify/{hash} endpoint finds it by hash."""
+    emp = Employee(
+        first_name="Lookup",
+        last_name="Tester",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    client.post(f"/api/payroll/forms/w2/{emp.id}/pdf?year=2026")
+
+    listing = client.get("/api/document-audits?doc_type=w2&limit=1").json()
+    assert len(listing) >= 1
+    audit = listing[0]
+
+    # Lookup by id
+    r = client.get(f"/api/document-audits/{audit['id']}")
+    assert r.status_code == 200
+    assert r.json()["content_hash"] == audit["content_hash"]
+
+    # Lookup by hash
+    r = client.get(f"/api/document-audits/verify/{audit['content_hash']}")
+    assert r.status_code == 200
+    hits = r.json()
+    assert any(h["id"] == audit["id"] for h in hits)
+
+
+def test_audit_hash_is_deterministic_for_same_data(client: any, db_session: Session):
+    """Two PDF renders of the same W-2 produce the same content_hash. The
+    audit IDs differ (each render writes its own row) but the hashes match."""
+    from app.models.document_audit import DocumentAudit
+
+    emp = Employee(
+        first_name="Determ",
+        last_name="Inistic",
+        pay_type="hourly",
+        pay_rate=Decimal("20"),
+        pay_frequency="biweekly",
+        filing_status="single",
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.commit()
+
+    client.post(f"/api/payroll/forms/w2/{emp.id}/pdf?year=2026")
+    client.post(f"/api/payroll/forms/w2/{emp.id}/pdf?year=2026")
+
+    rows = (
+        db_session.query(DocumentAudit)
+        .filter(
+            DocumentAudit.doc_type == "w2",
+            DocumentAudit.doc_key == f"emp{emp.id}-yr2026",
+        )
+        .order_by(DocumentAudit.id.desc())
+        .limit(2)
+        .all()
+    )
+    assert len(rows) == 2
+    assert rows[0].content_hash == rows[1].content_hash
+    assert rows[0].id != rows[1].id
+
+
+def test_audit_verify_rejects_non_hex_hash(client: any):
+    r = client.get("/api/document-audits/verify/not-a-hash")
+    assert r.status_code == 400
+
+
+def test_compute_doc_hash_handles_decimals_and_dates():
+    """The hasher must canonicalize Decimals + datetimes — otherwise two
+    semantically identical payloads would hash to different values."""
+    from datetime import date as _date
+    from app.services.document_audit import compute_doc_hash
+
+    h1 = compute_doc_hash({"amt": Decimal("123.45"), "d": _date(2026, 1, 1)})
+    h2 = compute_doc_hash({"amt": Decimal("123.45"), "d": _date(2026, 1, 1)})
+    h3 = compute_doc_hash({"amt": Decimal("123.46"), "d": _date(2026, 1, 1)})
+    assert h1 == h2
+    assert h1 != h3
+
+
 # --- Tier 3: Employee Self-Service Portal -----------------------------------
 
 

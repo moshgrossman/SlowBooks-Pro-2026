@@ -114,9 +114,11 @@ def compute_941(db, year: int, quarter: int) -> dict:
     }
 
 
-def generate_941_pdf(db, year: int, quarter: int, company: dict) -> bytes:
+def generate_941_pdf(
+    db, year: int, quarter: int, company: dict, audit: dict | None = None
+) -> bytes:
     """Render Form 941 to a PDF for the given quarter."""
     data = compute_941(db, year, quarter)
     template = _jinja_env.get_template("form_941.html")
-    html_str = template.render(data=data, company=company or {})
+    html_str = template.render(data=data, company=company or {}, audit=audit or {})
     return HTML(string=html_str, url_fetcher=_safe_url_fetcher).write_pdf()

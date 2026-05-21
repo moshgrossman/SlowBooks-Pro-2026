@@ -34,10 +34,20 @@ from app.schemas.payroll import PayRunCreate, PayRunResponse, YTDResponse
 from app.schemas.deductions import GrossUpRequest, GrossUpResponse
 from app.services.payroll_service import calculate_withholdings
 from app.services.accounting import create_journal_entry
+from app.services.document_audit import (
+    audit_footer_context,
+    compute_doc_hash,
+    record_doc_audit,
+)
 from app.services.settings_service import get_all_settings
-from app.services.tax_forms.form_940 import generate_940_pdf
-from app.services.tax_forms.form_941 import generate_941_pdf
-from app.services.tax_forms.w2_w3 import generate_w2_pdf, generate_w3_pdf
+from app.services.tax_forms.form_940 import compute_940, generate_940_pdf
+from app.services.tax_forms.form_941 import compute_941, generate_941_pdf
+from app.services.tax_forms.w2_w3 import (
+    compute_w2,
+    compute_w3,
+    generate_w2_pdf,
+    generate_w3_pdf,
+)
 from app.services.garnishment import (
     GarnishmentSpec,
     apply_garnishments,
@@ -882,6 +892,16 @@ def _pdf_response(pdf_bytes: bytes, filename: str) -> Response:
     )
 
 
+def _hash_and_audit(
+    db: Session, doc_type: str, doc_key: str, company: dict, data: dict
+) -> dict:
+    """Hash the (company, data) pair, write the audit row, return the
+    footer-context dict the templates expect."""
+    content_hash = compute_doc_hash({"company": company, "data": data})
+    audit = record_doc_audit(db, doc_type, doc_key, content_hash)
+    return audit_footer_context(audit)
+
+
 @router.post("/forms/w2/{emp_id}/pdf", response_class=Response)
 def generate_w2_form_pdf(
     emp_id: int,
@@ -891,21 +911,29 @@ def generate_w2_form_pdf(
     """W-2 PDF for one employee for the given calendar year."""
     if not db.query(Employee).filter(Employee.id == emp_id).first():
         raise HTTPException(status_code=404, detail="Employee not found")
-    pdf = generate_w2_pdf(db, year, emp_id, _company_for_pdf(db))
+    company = _company_for_pdf(db)
+    audit = _hash_and_audit(
+        db, "w2", f"emp{emp_id}-yr{year}", company, compute_w2(db, year, emp_id)
+    )
+    pdf = generate_w2_pdf(db, year, emp_id, company, audit=audit)
     return _pdf_response(pdf, f"w2_{emp_id}_{year}.pdf")
 
 
 @router.post("/forms/w3/{year}/pdf", response_class=Response)
 def generate_w3_form_pdf(year: int, db: Session = Depends(get_db)):
     """W-3 transmittal PDF — aggregate across every W-2 for the year."""
-    pdf = generate_w3_pdf(db, year, _company_for_pdf(db))
+    company = _company_for_pdf(db)
+    audit = _hash_and_audit(db, "w3", f"yr{year}", company, compute_w3(db, year))
+    pdf = generate_w3_pdf(db, year, company, audit=audit)
     return _pdf_response(pdf, f"w3_{year}.pdf")
 
 
 @router.post("/forms/940/{year}/pdf", response_class=Response)
 def generate_form_940_pdf(year: int, db: Session = Depends(get_db)):
     """Form 940 (FUTA) PDF for the given calendar year."""
-    pdf = generate_940_pdf(db, year, _company_for_pdf(db))
+    company = _company_for_pdf(db)
+    audit = _hash_and_audit(db, "940", f"yr{year}", company, compute_940(db, year))
+    pdf = generate_940_pdf(db, year, company, audit=audit)
     return _pdf_response(pdf, f"form_940_{year}.pdf")
 
 
@@ -914,5 +942,13 @@ def generate_form_941_pdf(year: int, quarter: int, db: Session = Depends(get_db)
     """Form 941 (quarterly FICA) PDF for year + quarter."""
     if quarter not in (1, 2, 3, 4):
         raise HTTPException(status_code=400, detail="quarter must be 1-4")
-    pdf = generate_941_pdf(db, year, quarter, _company_for_pdf(db))
+    company = _company_for_pdf(db)
+    audit = _hash_and_audit(
+        db,
+        "941",
+        f"yr{year}-q{quarter}",
+        company,
+        compute_941(db, year, quarter),
+    )
+    pdf = generate_941_pdf(db, year, quarter, company, audit=audit)
     return _pdf_response(pdf, f"form_941_{year}_q{quarter}.pdf")

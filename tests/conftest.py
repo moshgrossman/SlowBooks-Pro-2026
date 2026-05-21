@@ -47,6 +47,7 @@ from app.models import (  # noqa: F401
     contacts,
     credit_memos,
     deductions,
+    document_audit as document_audit_model,
     email_log,
     email_templates,
     estimates,

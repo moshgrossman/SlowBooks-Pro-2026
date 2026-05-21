@@ -29,6 +29,7 @@ from app.models.backups import Backup
 # Phase 6: Ambitious
 from app.models.auth import LoginAttempt
 from app.models.companies import Company
+from app.models.document_audit import DocumentAudit
 from app.models.payroll import Employee, PayRun, PayStub
 
 # Tier 1: Full payroll / HR system
@@ -121,4 +122,6 @@ __all__ = [
     "SavedReport",
     # Auth audit
     "LoginAttempt",
+    # Document audit (tax forms, regulated PDFs)
+    "DocumentAudit",
 ]

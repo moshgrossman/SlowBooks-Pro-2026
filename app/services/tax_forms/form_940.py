@@ -95,9 +95,9 @@ def compute_940(db, year: int) -> dict:
     }
 
 
-def generate_940_pdf(db, year: int, company: dict) -> bytes:
+def generate_940_pdf(db, year: int, company: dict, audit: dict | None = None) -> bytes:
     """Render Form 940 to a PDF for the given year."""
     data = compute_940(db, year)
     template = _jinja_env.get_template("form_940.html")
-    html_str = template.render(data=data, company=company or {})
+    html_str = template.render(data=data, company=company or {}, audit=audit or {})
     return HTML(string=html_str, url_fetcher=_safe_url_fetcher).write_pdf()
