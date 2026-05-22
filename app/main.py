@@ -114,38 +114,42 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup_security_checks():
-    """Fail hard on critical misconfigurations and create DB tables."""
-    Base.metadata.create_all(bind=engine)
+    """Fail hard on critical misconfigurations BEFORE touching the DB.
 
+    Order matters: the env-var checks are cheap and don't need network
+    I/O, so they run first. A misconfigured production deploy gets a
+    clean error message instead of a Postgres connection traceback.
+    """
     from app.config import APP_DEBUG, DATABASE_URL, PAYROLL_ENCRYPTION_SECRET
 
-    if APP_DEBUG:
-        return
-
-    if PAYROLL_ENCRYPTION_SECRET == "slowbooks-dev-payroll-key-change-me":
-        raise RuntimeError(
-            "FATAL: PAYROLL_ENCRYPTION_SECRET has not been set in production. "
-            "All employee bank account data would be decryptable by anyone with the source code. "
-            "Set a unique, strong PAYROLL_ENCRYPTION_SECRET env var before deploying."
-        )
-
-    if not DATABASE_URL.startswith("sqlite"):
-        if "sslmode" not in DATABASE_URL and "ssl" not in DATABASE_URL.lower():
+    if not APP_DEBUG:
+        if PAYROLL_ENCRYPTION_SECRET == "slowbooks-dev-payroll-key-change-me":
             raise RuntimeError(
-                "FATAL: DATABASE_URL does not specify TLS mode in production. "
-                "Unencrypted database connections leak sensitive financial and payroll data. "
-                "Add sslmode=require (or sslmode=verify-full for cert validation) to DATABASE_URL. "
-                "Example: postgresql://user:pass@host:5432/db?sslmode=require"
+                "FATAL: PAYROLL_ENCRYPTION_SECRET has not been set in production. "
+                "All employee bank account data would be decryptable by anyone with the source code. "
+                "Set a unique, strong PAYROLL_ENCRYPTION_SECRET env var before deploying."
             )
 
-    if not FORCE_HTTPS:
-        raise RuntimeError(
-            "FATAL: FORCE_HTTPS=false in production. Plain-HTTP traffic leaks "
-            "session cookies, portal tokens, and bank PII over the wire. Set "
-            "FORCE_HTTPS=true (default in production) so the app redirects plain "
-            "HTTP to HTTPS and emits HSTS. If terminating TLS at a proxy, the "
-            "redirect becomes a no-op."
-        )
+        if not DATABASE_URL.startswith("sqlite"):
+            if "sslmode" not in DATABASE_URL and "ssl" not in DATABASE_URL.lower():
+                raise RuntimeError(
+                    "FATAL: DATABASE_URL does not specify TLS mode in production. "
+                    "Unencrypted database connections leak sensitive financial and payroll data. "
+                    "Add sslmode=require (or sslmode=verify-full for cert validation) to DATABASE_URL. "
+                    "Example: postgresql://user:pass@host:5432/db?sslmode=require"
+                )
+
+        if not FORCE_HTTPS:
+            raise RuntimeError(
+                "FATAL: FORCE_HTTPS=false in production. Plain-HTTP traffic leaks "
+                "session cookies, portal tokens, and bank PII over the wire. Set "
+                "FORCE_HTTPS=true (default in production) so the app redirects plain "
+                "HTTP to HTTPS and emits HSTS. If terminating TLS at a proxy, the "
+                "redirect becomes a no-op."
+            )
+
+    # Only after the cheap checks pass do we open a DB connection.
+    Base.metadata.create_all(bind=engine)
 
 
 # ---- Rate limiting (Phase 9.7) ----
