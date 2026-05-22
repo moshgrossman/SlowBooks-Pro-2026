@@ -91,13 +91,16 @@ def approve_request(request_id, db):
     return decide_request(request_id, PTORequestDecision(status="approved"), db)
 ```
 
-### 4. Tax form JSON-vs-PDF mismatch (not a wiring fix — a known UX gap)
+### 4. Tax form JSON-vs-PDF mismatch — resolved
 
-`tax_forms.js` opens the response as a `blob:` URL expecting a PDF, but
-the backend currently returns JSON. The HTTP wiring is correct (every
-URL hits a real handler), the response format is just a placeholder
-until WeasyPrint templates are wired up. Tracked in
-[payroll-hr-module.md](payroll-hr-module.md) under "Pending items."
+Originally flagged: `tax_forms.js` opened the response as a `blob:` URL
+expecting a PDF, but the backend was returning JSON. The HTTP wiring
+was correct; the response format was wrong.
+
+Resolved by adding `/pdf` variants of each tax-form endpoint and
+pointing the SPA buttons at them. JSON endpoints stay for downstream
+integrations. See [payroll-hr-module.md](payroll-hr-module.md) for the
+full route table.
 
 ---
 

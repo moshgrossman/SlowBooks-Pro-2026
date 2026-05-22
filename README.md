@@ -68,7 +68,7 @@ See the [release notes on GitHub](https://github.com/VonHoltenCodes/SlowBooks-Pr
 ### Payroll & HR
 - **Core payroll** — pay runs with federal/state/FICA withholding, balanced journal entries, pay stubs, YTD totals, encrypted ACH direct deposit, gross-up calculator, supplemental wages, multi-state withholding
 - **HR** — 8-task onboarding checklist with e-signature, time tracking with approve/reject, PTO policies + requests with accrual draw-down, pre/post-tax deductions, court-ordered garnishments
-- **Tax forms** — W-2, W-3, Form 940 (FUTA), Form 941 (FICA) endpoints (returning JSON; WeasyPrint PDF rendering is pending)
+- **Tax forms** — W-2, W-3, Form 940 (FUTA), Form 941 (FICA) endpoints. JSON for downstream integrations + WeasyPrint PDFs with tamper-evident audit hashes in the footer (SHA-256 + audit ID matched against the `document_audits` table).
 - **Self-service portal** — token-accessed at `/portal/{token}` — pay stubs, W-4 updates, direct-deposit setup, PTO requests; branded with the employer's logo and company name
 
 Tax calculations are approximate — verify with a tax professional. Full module reference (models, routes, UI pages, pending items) lives at [docs/payroll-hr-module.md](docs/payroll-hr-module.md).
