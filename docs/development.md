@@ -12,7 +12,7 @@ internal hardening notes see
 
 | Component | Technology |
 |-----------|-----------|
-| Backend | Python 3.13 + FastAPI (44 routers, 213+ routes) |
+| Backend | Python 3.13 + FastAPI (50 routers, 300+ routes) |
 | Database | PostgreSQL 17 / SQLite + SQLAlchemy 2.0 |
 | Migrations | Alembic |
 | Frontend | Vanilla HTML/CSS/JS (no framework) + self-hosted Chart.js 4.4.6 for analytics |
@@ -35,10 +35,10 @@ SlowBooks-Pro-2026/
 ├── alembic.ini               # Alembic config
 ├── migrations/               # Alembic database migrations (script_location in alembic.ini)
 ├── app/
-│   ├── main.py               # FastAPI app + 48 routers (250+ routes)
+│   ├── main.py               # FastAPI app + 50 routers (300+ routes)
 │   ├── config.py             # Environment-based settings (CORS, origins)
 │   ├── database.py           # SQLAlchemy engine + session + table auto-creation
-│   ├── models/               # 30+ model modules (50+ tables)
+│   ├── models/               # 34 model modules (45+ tables)
 │   │   ├── accounts.py       # Chart of Accounts (self-referencing)
 │   │   ├── contacts.py       # Customers + Vendors
 │   │   ├── items.py          # Products, services, materials, labor
@@ -124,7 +124,7 @@ SlowBooks-Pro-2026/
 │   ├── worker.js             # Hardened proxy (model allowlist, rate limiting, security headers)
 │   ├── wrangler.toml         # Deployment config
 │   └── README.md             # Setup guide
-├── tests/                    # 295 pytest tests (auth, security, posting, reporting, import, payroll Tiers 1-3, HR, wiring audit)
+├── tests/                    # 296 pytest tests (auth, security, posting, reporting, import, payroll Tiers 1-3, HR, wiring audit, schema audit)
 └── index.html                # SPA shell
 ```
 

@@ -397,7 +397,7 @@ python3 scripts/seed_irs_mock_data.py
 
 ## API reference
 
-All endpoints under `/api/`. Swagger docs at `/docs`. 213+ routes across 44 routers. All routes (except `/api/auth/*`, `/health`, `/pay/*`, and `/api/stripe/webhook`) require an authenticated session.
+All endpoints under `/api/`. Swagger docs at `/docs`. 300+ routes across 50 routers. All routes (except `/api/auth/*`, `/health`, `/pay/*`, and `/api/stripe/webhook`) require an authenticated session.
 
 ### Authentication
 | Endpoint | Methods | Description |
