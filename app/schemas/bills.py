@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date as dt_date, datetime
 from typing import Optional
 from pydantic import BaseModel
 
@@ -27,8 +27,8 @@ class BillLineResponse(BaseModel):
 class BillCreate(BaseModel):
     vendor_id: int
     bill_number: str
-    date: date
-    due_date: Optional[date] = None
+    date: dt_date
+    due_date: Optional[dt_date] = None
     terms: str = "Net 30"
     ref_number: Optional[str] = None
     po_id: Optional[int] = None
@@ -39,8 +39,8 @@ class BillCreate(BaseModel):
 
 class BillUpdate(BaseModel):
     bill_number: Optional[str] = None
-    date: Optional[date] = None
-    due_date: Optional[date] = None
+    date: Optional[dt_date] = None
+    due_date: Optional[dt_date] = None
     terms: Optional[str] = None
     ref_number: Optional[str] = None
     tax_rate: Optional[float] = None
@@ -55,8 +55,8 @@ class BillResponse(BaseModel):
     vendor_name: Optional[str] = None
     status: str
     po_id: Optional[int] = None
-    date: date
-    due_date: Optional[date] = None
+    date: dt_date
+    due_date: Optional[dt_date] = None
     terms: Optional[str] = None
     ref_number: Optional[str] = None
     subtotal: float = 0
@@ -78,7 +78,7 @@ class BillPaymentAllocationCreate(BaseModel):
 
 class BillPaymentCreate(BaseModel):
     vendor_id: int
-    date: date
+    date: dt_date
     amount: float
     method: Optional[str] = None
     check_number: Optional[str] = None
@@ -91,7 +91,7 @@ class BillPaymentResponse(BaseModel):
     id: int
     vendor_id: int
     vendor_name: Optional[str] = None
-    date: date
+    date: dt_date
     amount: float
     method: Optional[str] = None
     check_number: Optional[str] = None

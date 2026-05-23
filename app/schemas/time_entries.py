@@ -1,11 +1,11 @@
-from datetime import date, datetime
+from datetime import date as dt_date, datetime
 from typing import Optional
 from pydantic import BaseModel
 
 
 class TimeEntryCreate(BaseModel):
     employee_id: int
-    date: date
+    date: dt_date
     hours_regular: float = 0
     hours_overtime: float = 0
     hours_doubletime: float = 0
@@ -14,7 +14,7 @@ class TimeEntryCreate(BaseModel):
 
 
 class TimeEntryUpdate(BaseModel):
-    date: Optional[date] = None
+    date: Optional[dt_date] = None
     hours_regular: Optional[float] = None
     hours_overtime: Optional[float] = None
     hours_doubletime: Optional[float] = None
@@ -27,7 +27,7 @@ class TimeEntryResponse(BaseModel):
     id: int
     employee_id: int
     employee_name: Optional[str] = None
-    date: date
+    date: dt_date
     hours_regular: float = 0
     hours_overtime: float = 0
     hours_doubletime: float = 0

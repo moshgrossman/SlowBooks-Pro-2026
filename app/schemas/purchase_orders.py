@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date as dt_date
 from typing import Optional
 from pydantic import BaseModel
 
@@ -25,8 +25,8 @@ class POLineResponse(BaseModel):
 
 class POCreate(BaseModel):
     vendor_id: int
-    date: date
-    expected_date: Optional[date] = None
+    date: dt_date
+    expected_date: Optional[dt_date] = None
     ship_to: Optional[str] = None
     tax_rate: float = 0
     notes: Optional[str] = None
@@ -35,8 +35,8 @@ class POCreate(BaseModel):
 
 class POUpdate(BaseModel):
     vendor_id: Optional[int] = None
-    date: Optional[date] = None
-    expected_date: Optional[date] = None
+    date: Optional[dt_date] = None
+    expected_date: Optional[dt_date] = None
     ship_to: Optional[str] = None
     status: Optional[str] = None
     tax_rate: Optional[float] = None
@@ -50,8 +50,8 @@ class POResponse(BaseModel):
     vendor_id: int
     vendor_name: Optional[str] = None
     status: str
-    date: date
-    expected_date: Optional[date] = None
+    date: dt_date
+    expected_date: Optional[dt_date] = None
     ship_to: Optional[str] = None
     subtotal: float = 0
     tax_rate: float = 0

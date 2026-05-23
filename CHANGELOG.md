@@ -7,6 +7,33 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### Schema-wide date-collision fix (the rest of jake-378's pattern)
+jake-378 previously fixed the `date: date` field-name-shadows-type
+collision in `app/schemas/invoices.py` and `estimates.py` (commits
+48cdb79, e12bbb1). A quick reproducer confirmed **pydantic 2.13 still
+has the same bug**:
+
+```python
+class Update(BaseModel):
+    date: Optional[date] = None   # Optional[<the field>] not Optional[date]
+                                   # -> "Input should be None" on every value
+```
+
+Same pattern existed in **9 more schemas** (banking, bills, cc_charges,
+credit_memos, deposits, journal, payments, purchase_orders,
+time_entries) — applied jake's `from datetime import date as dt_date`
+rename uniformly across all of them. Added
+`tests/test_schemas_audit.py` to lock in the rule so the bug can't
+drift back in via a new schema file. (296 tests now passing, up from
+295.)
+
+### PostgreSQL version doc alignment
+Compose files (both dev and prod) already ship `postgres:17-alpine`,
+but `README.md`, `INSTALL.md`, `docs/development.md`, and
+`docs/operations.md` all said "PostgreSQL 16" or `brew install
+postgresql@16`. Same lag-vs-reality pattern as the Python version
+fix. Docs now match what's actually deployed (17).
+
 ### Dependency upgrade pass
 Five hard-pinned (`==`) deps in `requirements.txt` were months behind.
 Pins relaxed to floor-and-cap ranges so future patch/minor bumps land

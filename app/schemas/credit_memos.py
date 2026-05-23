@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date as dt_date, datetime
 from typing import Optional
 from pydantic import BaseModel
 
@@ -29,7 +29,7 @@ class CreditApplicationCreate(BaseModel):
 
 class CreditMemoCreate(BaseModel):
     customer_id: int
-    date: date
+    date: dt_date
     original_invoice_id: Optional[int] = None
     tax_rate: float = 0
     notes: Optional[str] = None
@@ -43,7 +43,7 @@ class CreditMemoResponse(BaseModel):
     customer_name: Optional[str] = None
     status: str
     original_invoice_id: Optional[int] = None
-    date: date
+    date: dt_date
     subtotal: float = 0
     tax_rate: float = 0
     tax_amount: float = 0

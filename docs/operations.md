@@ -70,7 +70,7 @@ docker compose exec -T postgres psql -U bookkeeper bookkeeper \
 `pg_dump` not found?
 - Docker: included automatically; nothing to do.
 - Native Linux: `sudo apt install postgresql-client`
-- Native macOS: `brew install postgresql@16`
+- Native macOS: `brew install postgresql@17`
 
 ---
 
