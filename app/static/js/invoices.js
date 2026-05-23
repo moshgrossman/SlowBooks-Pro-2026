@@ -180,7 +180,7 @@ const InvoicesPage = {
     lineCount: 0,
     _customers: [],
 
-    async showForm(id = null) {
+    async showForm(id = null, prefillCustomerId = null) {
         const [customers, items, settings] = await Promise.all([
             API.get('/customers?active_only=true'),
             API.get('/items?active_only=true'),
@@ -188,7 +188,7 @@ const InvoicesPage = {
         ]);
 
         let inv = {
-            customer_id: '',
+            customer_id: prefillCustomerId || '',
             date: todayISO(),
             terms: settings.default_terms || 'Net 30',
             po_number: '',

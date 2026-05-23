@@ -17,10 +17,56 @@ from app.models.reseller_permit import ResellerPermit
 
 router = APIRouter(prefix="/api/reseller-permits", tags=["reseller-permits"])
 
+
 # Lookup URLs for the official state verification pages. Each entry takes
 # `{permit}` formatting in the URL template; if a state doesn't accept a
 # pre-filled permit, we fall back to a generic landing page and the
 # operator types the number manually.
+def _normalize_permit_number(jurisdiction: str, raw: str) -> str:
+    """Canonicalize a permit number before storage. Only fires when the
+    digits-only form matches the state's expected length — otherwise the
+    operator's input is preserved verbatim (legacy / non-standard IDs
+    stay untouched). Prevents accidentally turning a test fixture like
+    'SOON-1' into '1'."""
+    raw = (raw or "").strip()
+    jur = (jurisdiction or "").upper()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if jur == "WA" and len(digits) == 9:
+        return digits
+    if (
+        jur == "CA"
+        and 9 <= len(digits) <= 12
+        and digits == raw.replace("-", "").replace(" ", "")
+    ):
+        return digits
+    if jur == "TX" and len(digits) == 11:
+        return digits
+    return raw
+
+
+def _validate_permit_format(jurisdiction: str, raw: str) -> tuple[bool, str]:
+    """Soft-validate the permit format. Returns (ok, message).
+
+    Returning ok=False does NOT block the write — operators with weird
+    legacy permits would be stuck. Callers can choose to warn instead.
+    """
+    jur = (jurisdiction or "").upper()
+    digits = "".join(ch for ch in (raw or "") if ch.isdigit())
+    if jur == "WA":
+        if len(digits) == 9:
+            return True, "Format matches WA (9 digits)"
+        return False, f"WA permits are 9 digits (you have {len(digits)})"
+    if jur == "CA":
+        if 9 <= len(digits) <= 12:
+            return True, "Format matches CA"
+        return False, f"CA permits are 9-12 digits (you have {len(digits)})"
+    if jur == "TX":
+        if len(digits) == 11:
+            return True, "Format matches TX"
+        return False, f"TX permits are 11 digits (you have {len(digits)})"
+    return True, "No format rule on file for this state"
+
+
 _LOOKUP_URLS: dict[str, str] = {
     # WA DoR's reseller permit verification — they accept the permit
     # number as a URL parameter. Free to use, no enrollment required.
@@ -104,6 +150,24 @@ def _enrich(permit: ResellerPermit) -> ResellerPermitOut:
     )
 
 
+@router.get("/validate-format")
+def validate_format(
+    jurisdiction: str = Query(...),
+    permit_number: str = Query(...),
+):
+    """Lightweight format check. Same rules as the SPA's inline hint, but
+    callable from scripts or third-party tooling that wants the canonical
+    answer."""
+    ok, msg = _validate_permit_format(jurisdiction, permit_number)
+    return {
+        "jurisdiction": jurisdiction.upper(),
+        "permit_number": permit_number,
+        "normalized": _normalize_permit_number(jurisdiction, permit_number),
+        "ok": ok,
+        "message": msg,
+    }
+
+
 @router.get("", response_model=list[ResellerPermitOut])
 def list_permits(
     entity_type: Optional[str] = Query(default=None),
@@ -163,11 +227,12 @@ def create_permit(data: ResellerPermitIn, db: Session = Depends(get_db)):
             status_code=400,
             detail="entity_type must be customer, vendor, or company",
         )
+    jur = (data.jurisdiction or "").upper().strip()
     permit = ResellerPermit(
         entity_type=data.entity_type,
         entity_id=data.entity_id,
-        jurisdiction=(data.jurisdiction or "").upper().strip(),
-        permit_number=(data.permit_number or "").strip(),
+        jurisdiction=jur,
+        permit_number=_normalize_permit_number(jur, data.permit_number),
         issued_at=data.issued_at,
         expires_at=data.expires_at,
         notes=data.notes,
@@ -189,7 +254,9 @@ def update_permit(
     permit.entity_type = data.entity_type
     permit.entity_id = data.entity_id
     permit.jurisdiction = (data.jurisdiction or "").upper().strip()
-    permit.permit_number = (data.permit_number or "").strip()
+    permit.permit_number = _normalize_permit_number(
+        permit.jurisdiction, data.permit_number
+    )
     permit.issued_at = data.issued_at
     permit.expires_at = data.expires_at
     permit.notes = data.notes

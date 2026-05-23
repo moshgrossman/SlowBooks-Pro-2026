@@ -84,14 +84,14 @@ const PaymentsPage = {
 
     _invoices: [],
 
-    async showForm() {
+    async showForm(_ignoredId = null, prefillCustomerId = null) {
         const [customers, accounts] = await Promise.all([
             API.get('/customers?active_only=true'),
             API.get('/accounts'),
         ]);
         const bankAccts = accounts.filter(a => a.account_type === 'asset');
 
-        const custOpts = customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        const custOpts = customers.map(c => `<option value="${c.id}"${prefillCustomerId === c.id ? ' selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
         const bankOpts = bankAccts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
 
         openModal('Record Payment', `
@@ -126,6 +126,10 @@ const PaymentsPage = {
                     <button type="submit" class="btn btn-primary">Record Payment</button>
                 </div>
             </form>`);
+        // If we opened from the customer details flow, the customer is
+        // already selected but the change event didn't fire — trigger the
+        // invoice list manually so the operator sees the unpaid invoices.
+        if (prefillCustomerId) PaymentsPage.loadInvoices(prefillCustomerId);
     },
 
     async loadInvoices(customerId) {

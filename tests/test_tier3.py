@@ -1248,7 +1248,8 @@ def test_reseller_permit_crud(client: any):
     created = _make_permit(client)
     pid = created["id"]
     assert created["jurisdiction"] == "WA"
-    assert created["permit_number"] == "123-456-789"
+    # WA 9-digit format auto-normalizes — dashes stripped on write
+    assert created["permit_number"] == "123456789"
     # Verification URL pre-filled for WA
     assert created["verification_url"] and "dor.wa.gov" in created["verification_url"]
 
@@ -1265,7 +1266,8 @@ def test_reseller_permit_crud(client: any):
             "expires_at": "2030-06-30",
         },
     ).json()
-    assert updated["permit_number"] == "999-888-777"
+    # PUT applies the same WA normalization
+    assert updated["permit_number"] == "999888777"
 
     deleted = client.delete(f"/api/reseller-permits/{pid}").json()
     assert deleted["deleted"] == pid
@@ -1319,6 +1321,41 @@ def test_reseller_permit_mark_verified(client: any):
     ).json()
     assert stamped["last_verified_at"] is not None
     assert stamped["verified_by"] == "audit@example.com"
+
+
+def test_reseller_permit_wa_format_normalizes_dashes(client: any):
+    """WA permits often come in as 123-456-789 — backend strips to digits
+    so two writes that differ only in formatting collide on the same row."""
+    p1 = _make_permit(client, jurisdiction="WA", permit_number="123-456-789")
+    p2 = _make_permit(client, jurisdiction="WA", permit_number="123456789")
+    assert p1["permit_number"] == "123456789"
+    assert p2["permit_number"] == "123456789"
+
+
+def test_reseller_permit_validate_format_endpoint(client: any):
+    """The /validate-format endpoint returns ok=True for matching formats,
+    ok=False (but doesn't raise) for mismatches."""
+    r = client.get(
+        "/api/reseller-permits/validate-format"
+        "?jurisdiction=WA&permit_number=123-456-789"
+    ).json()
+    assert r["ok"] is True
+    assert r["normalized"] == "123456789"
+    assert "9 digits" in r["message"]
+
+    r = client.get(
+        "/api/reseller-permits/validate-format" "?jurisdiction=WA&permit_number=12345"
+    ).json()
+    assert r["ok"] is False
+    assert "9 digits" in r["message"]
+
+    # Unknown state — no rule, returns ok=True with explanatory message
+    r = client.get(
+        "/api/reseller-permits/validate-format"
+        "?jurisdiction=ZZ&permit_number=anything-goes"
+    ).json()
+    assert r["ok"] is True
+    assert "no format rule" in r["message"].lower()
 
 
 def test_reseller_permit_invalid_entity_type_rejected(client: any):
