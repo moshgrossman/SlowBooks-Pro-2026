@@ -95,6 +95,48 @@ imports `date` without `as dt_date` AND has a field literally named
 with a sensible field name (`time`, `datetime`, `id` — though only
 `date` has bitten us in practice).
 
+## Template rendering conventions
+
+### ⚠ Jinja2 `Environment(...)` without `autoescape=True`
+
+Jinja2 defaults `autoescape` to **False** — silently. Every HTML or
+email template rendered through such an environment is XSS-vulnerable
+when the context contains user-controlled strings (customer names,
+memo fields, anything from a public-facing form). This has bitten us
+twice — once in WC3D's commit `ca6182f` (`app/routes/public.py` +
+`app/services/pdf_service.py`) and once in this branch's red-team
+sweep (`app/services/email_service.py` SandboxedEnvironment + an
+f-string fallback in the same module).
+
+```python
+# ❌ DON'T — autoescape defaults to False
+from jinja2 import Environment, FileSystemLoader
+from jinja2.sandbox import SandboxedEnvironment
+
+env = Environment(loader=FileSystemLoader(template_dir))
+env = SandboxedEnvironment()
+```
+
+```python
+# ✅ DO — pass autoescape=True explicitly to every Environment
+env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
+env = SandboxedEnvironment(autoescape=True)
+```
+
+And if you fall back to raw HTML interpolation (an f-string with
+user-string fields), route each field through `html.escape()`:
+
+```python
+import html as _html
+return f"<p>Dear {_html.escape(customer.name)},</p>"
+```
+
+`tests/test_jinja_autoescape_audit.py` enforces this — CI fails if
+any `Environment(...)` or `SandboxedEnvironment(...)` call site in
+`app/` is missing the `autoescape=` argument. The walker handles
+nested calls like `Environment(loader=FileSystemLoader(...))` so
+the rule can't be defeated by indentation.
+
 ## Frontend ↔ backend wiring
 
 Every `API.get/post/put/del` call must hit a real handler with a

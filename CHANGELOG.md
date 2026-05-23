@@ -315,7 +315,7 @@ handler caught four real breakages:
   gitignored so dumps don't accidentally land in commits.
 
 ### Test coverage
-296 tests passing. Up from 119 at the start of this branch's work.
+297 tests passing. Up from 119 at the start of this branch's work.
 All previously-passing tests still pass.
 
 ### Docs reorganization
