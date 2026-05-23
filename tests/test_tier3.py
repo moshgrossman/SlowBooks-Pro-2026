@@ -1225,6 +1225,114 @@ def test_everify_rejects_unknown_status(client: any, db_session: Session):
     assert r.status_code == 400
 
 
+# --- Reseller permits -------------------------------------------------------
+
+
+def _make_permit(client, **overrides):
+    body = {
+        "entity_type": "customer",
+        "entity_id": 1,
+        "jurisdiction": "WA",
+        "permit_number": "123-456-789",
+        "issued_at": "2024-01-01",
+        "expires_at": "2028-01-01",
+    }
+    body.update(overrides)
+    r = client.post("/api/reseller-permits", json=body)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_reseller_permit_crud(client: any):
+    """Create, read, update, delete a reseller permit."""
+    created = _make_permit(client)
+    pid = created["id"]
+    assert created["jurisdiction"] == "WA"
+    assert created["permit_number"] == "123-456-789"
+    # Verification URL pre-filled for WA
+    assert created["verification_url"] and "dor.wa.gov" in created["verification_url"]
+
+    fetched = client.get(f"/api/reseller-permits/{pid}").json()
+    assert fetched["id"] == pid
+
+    updated = client.put(
+        f"/api/reseller-permits/{pid}",
+        json={
+            "entity_type": "customer",
+            "entity_id": 1,
+            "jurisdiction": "WA",
+            "permit_number": "999-888-777",
+            "expires_at": "2030-06-30",
+        },
+    ).json()
+    assert updated["permit_number"] == "999-888-777"
+
+    deleted = client.delete(f"/api/reseller-permits/{pid}").json()
+    assert deleted["deleted"] == pid
+
+
+def test_reseller_permit_expiry_computation(client: any):
+    """days_to_expire + is_expired are computed correctly off expires_at."""
+    from datetime import date as _date, timedelta as _td
+
+    future = (_date.today() + _td(days=45)).isoformat()
+    past = (_date.today() - _td(days=10)).isoformat()
+
+    fresh = _make_permit(client, permit_number="FUTURE", expires_at=future)
+    expired = _make_permit(client, permit_number="EXPIRED", expires_at=past)
+
+    assert fresh["is_expired"] is False
+    assert 44 <= fresh["days_to_expire"] <= 46
+    assert expired["is_expired"] is True
+    assert expired["days_to_expire"] <= -9
+
+
+def test_reseller_permit_expiring_filter(client: any):
+    """The /expiring endpoint returns permits inside the window (and
+    already-expired ones, which sort to the front)."""
+    from datetime import date as _date, timedelta as _td
+
+    soon = (_date.today() + _td(days=20)).isoformat()
+    far = (_date.today() + _td(days=200)).isoformat()
+    past = (_date.today() - _td(days=5)).isoformat()
+
+    _make_permit(client, permit_number="SOON-1", expires_at=soon)
+    _make_permit(client, permit_number="FAR-1", expires_at=far)
+    _make_permit(client, permit_number="EXPIRED-1", expires_at=past)
+
+    rows = client.get("/api/reseller-permits/expiring?within_days=30").json()
+    numbers = {r["permit_number"] for r in rows}
+    assert "SOON-1" in numbers
+    assert "EXPIRED-1" in numbers  # past is <= cutoff so included
+    assert "FAR-1" not in numbers
+
+
+def test_reseller_permit_mark_verified(client: any):
+    """POST /mark-verified stamps last_verified_at + verified_by."""
+    permit = _make_permit(client, permit_number="VERIFY-ME")
+    pid = permit["id"]
+    assert permit["last_verified_at"] is None
+
+    stamped = client.post(
+        f"/api/reseller-permits/{pid}/mark-verified",
+        json={"verified_by": "audit@example.com"},
+    ).json()
+    assert stamped["last_verified_at"] is not None
+    assert stamped["verified_by"] == "audit@example.com"
+
+
+def test_reseller_permit_invalid_entity_type_rejected(client: any):
+    r = client.post(
+        "/api/reseller-permits",
+        json={
+            "entity_type": "garbage",
+            "jurisdiction": "WA",
+            "permit_number": "X",
+        },
+    )
+    assert r.status_code == 400
+
+
 def test_rewrap_all_re_encrypts_old_key_ciphertext(db_session: Session):
     """rewrap_all() finds ciphertext encrypted with the previous key and
     re-encrypts it with the current key. Already-current rows are skipped."""

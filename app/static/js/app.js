@@ -46,6 +46,7 @@ const App = {
         '/hr/pto':          { page: 'hr-pto',           label: 'Time Off',         render: () => PTOPage.render() },
         '/hr/deductions':   { page: 'hr-deductions',   label: 'Deductions',        render: () => DeductionsPage.render() },
         '/hr/tax-forms':    { page: 'hr-tax-forms',    label: 'Tax Forms',         render: () => TaxFormsPage.render() },
+        '/reseller-permits':{ page: 'reseller-permits',label: 'Reseller Permits', render: () => ResellerPermitsPage.render() },
         // Phase 9: Analytics (real-time business intelligence)
         '/analytics':     { page: 'analytics',       label: 'Analytics & AI',     render: () => AnalyticsPage.render() },
         // Phase 9: Forum Bug Fixes & Missing Features

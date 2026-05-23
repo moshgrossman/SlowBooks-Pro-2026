@@ -31,6 +31,7 @@ from app.models.auth import LoginAttempt
 from app.models.companies import Company
 from app.models.document_audit import DocumentAudit
 from app.models.portal_access import PortalAccess
+from app.models.reseller_permit import ResellerPermit
 from app.models.payroll import Employee, PayRun, PayStub
 
 # Tier 1: Full payroll / HR system
@@ -127,4 +128,6 @@ __all__ = [
     "DocumentAudit",
     # Portal access audit
     "PortalAccess",
+    # Reseller permits — expiry tracking + manual verification trail
+    "ResellerPermit",
 ]

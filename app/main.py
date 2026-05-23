@@ -93,6 +93,7 @@ from app.routes import deductions
 # Tier 3: HR admin + employee self-service portal
 from app.routes import onboarding, portal
 from app.routes import document_audit as document_audit_routes
+from app.routes import reseller_permits as reseller_permits_routes
 from app.services.auth import get_session_secret
 
 from app.config import (
@@ -377,6 +378,7 @@ app.include_router(tax_forms.router)
 app.include_router(onboarding.router)
 app.include_router(portal.router)
 app.include_router(document_audit_routes.router)
+app.include_router(reseller_permits_routes.router)
 
 # Register audit log hooks
 register_audit_hooks(SessionLocal)

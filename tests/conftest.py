@@ -51,6 +51,7 @@ from app.models import (  # noqa: F401
     email_log,
     email_templates,
     portal_access as portal_access_model,
+    reseller_permit as reseller_permit_model,
     estimates,
     hr,
     invoices,
