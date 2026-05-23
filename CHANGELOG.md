@@ -7,6 +7,38 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### Audit + ops automation
+- **Portal access audit log** — new `portal_accesses` table records
+  every authenticated and unauthenticated portal hit (employee_id, IP,
+  truncated UA, path, success). Mirrors `LoginAttempt` and gives
+  forensic queries something more granular than `portal_token_last_used`.
+- **Encryption key rewrap CLI** — `python -m app.services.encryption
+  rewrap` re-encrypts every bank-PII blob under the current key, so
+  rotation can actually complete (transparent reads via PREV fallback
+  was already shipped). Supports `--dry-run`.
+- **Wiring audit as a unit test** — `tests/test_wiring.py` grep-and-
+  resolves every JS `API.*` call against the registered FastAPI routes.
+  Catches typos and stale paths automatically — CI fails when a JS
+  caller goes nowhere.
+- **End-to-end portal test** — single test walks the entire portal
+  lifecycle (mint → claim → 5 cookieless pages → POST PTO → logout →
+  cold-401 → force-expire → rotate → claim again).
+- **Weekly `pip-audit` GitHub Action** — Sunday cron, opens a
+  security-labeled issue on findings (de-duped), fails the workflow run.
+
+### Frontend polish
+- **Drag-and-drop document uploads** on Employee Details > Documents.
+- **Portal logout button** in `portal/base.html` nav.
+- **Branded portal favicon** — `/portal/favicon.ico` serves the
+  employer's company logo so each customer's portal carries their own
+  bookmark icon.
+
+### Bug fix
+- Pay-stub PDF was rendering accountable-plan reimbursements as
+  positive line items in the **Deductions** table. Now they have their
+  own **Additions to Net (non-taxable)** table above net pay. Net-pay
+  math was always right; the display was confusing.
+
 ### Tax forms — PDFs, audit hashes, the works
 - **WeasyPrint PDF endpoints** — `POST /api/payroll/forms/{w2,w3,940,941}/.../pdf`
   render real printable forms (Acme Co. branded, masked SSN, full box
