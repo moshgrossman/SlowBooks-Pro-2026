@@ -1118,7 +1118,6 @@ def test_encryption_returns_none_for_garbage():
 def test_rewrap_all_re_encrypts_old_key_ciphertext(db_session: Session):
     """rewrap_all() finds ciphertext encrypted with the previous key and
     re-encrypts it with the current key. Already-current rows are skipped."""
-    import os as _os
 
     import app.services.encryption as enc
 
