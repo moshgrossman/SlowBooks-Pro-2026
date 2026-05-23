@@ -37,6 +37,7 @@ jobs:
             app/services/auth.py \
             app/services/audit.py \
             app/services/encryption.py \
+            app/services/email_service.py \
             app/routes/analytics.py \
             app/routes/auth.py \
             app/routes/portal.py \
@@ -56,6 +57,7 @@ jobs:
             app/services/auth.py \
             app/services/audit.py \
             app/services/encryption.py \
+            app/services/email_service.py \
             app/routes/analytics.py \
             app/routes/auth.py \
             app/routes/portal.py \

@@ -136,7 +136,11 @@ def render_template_from_db(db: Session, template_name: str, context: dict) -> t
 
     tpl = db.query(EmailTemplate).filter(EmailTemplate.name == template_name).first()
     if tpl:
-        env = SandboxedEnvironment()
+        # autoescape=True so customer-supplied names / addresses / memo
+        # text injected via {{ }} can't break out of HTML context. Same
+        # rule WC3D applied to the file-loader Environment in commit
+        # ca6182f — keep both paths consistent.
+        env = SandboxedEnvironment(autoescape=True)
         from app.services.pdf_service import _format_currency, _format_date
 
         env.filters["currency"] = _format_currency
@@ -153,11 +157,21 @@ def render_invoice_email(invoice, company_settings: dict, pay_url: str = None) -
         template = _jinja_env.get_template("invoice_email.html")
         return template.render(inv=invoice, company=company_settings, pay_url=pay_url)
     except Exception:
-        # Fallback simple email
-        company_name = company_settings.get("company_name", "Our Company")
+        # Fallback simple email. Customer name + company name are escaped
+        # via html.escape() since they can contain user-controlled text
+        # (e.g. a customer named `<script>...`). Invoice number is a
+        # generated string but escaped defensively. Float and date come
+        # from server-side formatting — no need to escape.
+        import html as _html
+
+        customer_name = _html.escape(
+            invoice.customer.name if invoice.customer else "Customer"
+        )
+        company_name = _html.escape(company_settings.get("company_name", "Our Company"))
+        invoice_number = _html.escape(str(invoice.invoice_number))
         return f"""<html><body>
-        <p>Dear {invoice.customer.name if invoice.customer else 'Customer'},</p>
-        <p>Please find attached Invoice #{invoice.invoice_number} for ${float(invoice.total):,.2f}.</p>
+        <p>Dear {customer_name},</p>
+        <p>Please find attached Invoice #{invoice_number} for ${float(invoice.total):,.2f}.</p>
         <p>Payment is due by {invoice.due_date}.</p>
         <p>Thank you for your business.</p>
         <p>{company_name}</p>

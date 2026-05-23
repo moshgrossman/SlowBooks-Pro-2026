@@ -7,6 +7,36 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### Red-team pass on WC3D's Jinja2 XSS fix
+WC3D's commit `ca6182f` enabled `autoescape=True` on the two Jinja2
+Environments he found (`app/routes/public.py`,
+`app/services/pdf_service.py`). A red-team sweep of every other
+Jinja2 construction in `app/` turned up **one more spot** missing
+the same fix:
+
+- `app/services/email_service.py:139` — `SandboxedEnvironment()`
+  (used to render admin-editable email templates with customer-
+  supplied data injected as context). Fixed:
+  `SandboxedEnvironment(autoescape=True)`.
+
+- Same file, line 156–164 — when the file-based template fails, the
+  fallback path was f-string-interpolating `invoice.customer.name`
+  directly into an HTML body. Routed through `html.escape()` now.
+
+Added `tests/test_jinja_autoescape_audit.py` — walks every
+`Environment(...)` / `SandboxedEnvironment(...)` call in `app/`
+(with a proper balanced-paren walker, since `Environment(loader=
+FileSystemLoader(...))` defeats a naive `[^)]*` regex) and fails CI
+if any one is missing `autoescape=`. The rule can't drift back.
+
+Also verified the JS side: `toast()` uses `textContent`, so all
+`toast(\`...${user.name}...\`)` calls are safe by construction;
+`openModal()` uses `textContent` for the title (safe) and
+`innerHTML` for the body (relies on per-call `escapeHtml()`, which
+36 of 40 JS files use — the remainder don't render user-strings).
+The broader JS-innerHTML-XSS class is a separate concern already
+tracked under the CSP-unsafe-inline-cleanup item in `docs/todo.md`.
+
 ### Layout: `alembic/` → `migrations/`
 Database migration scripts moved from `alembic/` to the more
 conventional `migrations/` at the top level. `script_location` in
