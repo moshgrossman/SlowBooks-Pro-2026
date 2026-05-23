@@ -399,7 +399,12 @@ const EmployeesPage = {
                 html += '</tbody></table>';
             }
             html += `
-                <button class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="EmployeesPage._showUploadForm(${id})">+ Upload Document</button>
+                <div id="emp-doc-dropzone-${id}"
+                     style="margin-top:12px;border:2px dashed #c0c8d0;border-radius:6px;padding:18px;text-align:center;color:#666;font-size:13px;background:#fafbfc;cursor:pointer"
+                     onclick="document.getElementById('doc-file-${id}').click()">
+                    Drag a file here, or click to browse
+                </div>
+                <button class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="EmployeesPage._showUploadForm(${id})">+ Upload Document (with category)</button>
                 <div id="emp-doc-form-${id}" style="display:none;margin-top:12px">
                     <div class="form-grid">
                         <div class="form-group"><label>Category</label>
@@ -413,6 +418,7 @@ const EmployeesPage = {
                     </div>
                 </div>`;
             el.innerHTML = html;
+            EmployeesPage._wireDropzone(id);
         } catch (err) {
             el.innerHTML = `<p class="text-muted">Documents unavailable: ${escapeHtml(err.message)}</p>`;
         }
@@ -421,6 +427,55 @@ const EmployeesPage = {
     _showUploadForm(id) {
         const formEl = document.getElementById(`emp-doc-form-${id}`);
         if (formEl) formEl.style.display = 'block';
+    },
+
+    _wireDropzone(id) {
+        const dz = document.getElementById(`emp-doc-dropzone-${id}`);
+        const hidden = document.getElementById(`doc-file-${id}`);
+        if (!dz || !hidden) return;
+
+        const highlight = (on) => {
+            dz.style.background = on ? '#eef4fb' : '#fafbfc';
+            dz.style.borderColor = on ? '#336699' : '#c0c8d0';
+        };
+
+        // The hidden file input still drives the manual upload path, so a
+        // click-to-browse falls back to the same uploader as the form.
+        hidden.addEventListener('change', () => {
+            if (hidden.files && hidden.files.length) {
+                EmployeesPage._uploadDroppedFile(id, hidden.files[0]);
+                hidden.value = '';
+            }
+        });
+
+        ['dragenter', 'dragover'].forEach(evt =>
+            dz.addEventListener(evt, e => { e.preventDefault(); highlight(true); })
+        );
+        ['dragleave', 'drop'].forEach(evt =>
+            dz.addEventListener(evt, e => { e.preventDefault(); highlight(false); })
+        );
+        dz.addEventListener('drop', e => {
+            const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (file) EmployeesPage._uploadDroppedFile(id, file);
+        });
+    },
+
+    async _uploadDroppedFile(empId, file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('doc_category', 'general');
+        try {
+            const res = await fetch(`/api/employees/${empId}/documents`, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+            });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Upload failed');
+            toast(`Uploaded ${file.name}`);
+            EmployeesPage._loadDocuments(empId);
+        } catch (err) {
+            toast(err.message || 'Upload failed', 'error');
+        }
     },
 
     async _uploadDocument(id) {

@@ -369,6 +369,35 @@ def portal_logout():
     return response
 
 
+@router.get("/portal/favicon.ico")
+def portal_favicon(db: Session = Depends(get_db)):
+    """Serve the employer's company logo as the portal favicon.
+
+    Falls back to a 204 if no logo is configured — better than a 404 in
+    every browser dev-tools console. The actual <link rel="icon"> in the
+    portal templates points here, so each customer's portal carries their
+    own bookmark icon.
+    """
+    from fastapi.responses import FileResponse, Response
+
+    settings = get_all_settings(db)
+    logo_path = (settings.get("company_logo_path") or "").lstrip("/")
+    if not logo_path:
+        return Response(status_code=204)
+
+    # Same resolve-within guard the attachments code uses — never serve
+    # anything outside the static dir.
+    static_root = (Path(__file__).parent.parent / "static").resolve()
+    full_path = (static_root / logo_path.removeprefix("static/")).resolve()
+    try:
+        full_path.relative_to(static_root)
+    except ValueError:
+        return Response(status_code=204)
+    if not full_path.exists():
+        return Response(status_code=204)
+    return FileResponse(full_path, media_type="image/png")
+
+
 # ---------------------------------------------------------------------------
 # Backward-compat claim shims — the URL the employee receives by email is
 # still /portal/{token}/... but each of these now sets the cookie and

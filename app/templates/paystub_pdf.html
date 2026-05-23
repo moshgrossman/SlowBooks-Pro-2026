@@ -149,6 +149,26 @@
         </div>
     </div>
 
+    {% if additions %}
+    <div style="margin-top:14px">
+        <div class="section-label">Additions to Net (non-taxable)</div>
+        <table class="grid">
+            <thead><tr>
+                <th>Description</th><th class="r">Current</th>
+            </tr></thead>
+            <tbody>
+            {% for a in additions %}
+                <tr><td>{{ a.label }}</td><td class="r">{{ a.amount | currency }}</td></tr>
+            {% endfor %}
+                <tr class="total">
+                    <td>Total Additions</td>
+                    <td class="r">{{ total_additions | currency }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
     <div class="net-box">
         <div>
             <span class="label">Net Wages (Current)</span>

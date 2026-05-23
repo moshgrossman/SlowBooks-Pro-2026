@@ -43,6 +43,13 @@ _EMPLOYER_KEYS = {
     "state_other_employer",
 }
 
+# Keys that ADD to net pay (accountable-plan reimbursements). These would
+# otherwise fall through into _deduction_lines() and visually subtract,
+# even though the net-pay math in routes/payroll.py adds them in correctly.
+_ADDITION_KEYS = {
+    "reimbursements": "Reimbursements (non-taxable)",
+}
+
 
 def _q(value) -> Decimal:
     """Coerce to Decimal and quantize to cents."""
@@ -75,7 +82,7 @@ def _deduction_lines(stub) -> list[dict]:
 
     if parsed:
         for key, amount in parsed.items():
-            if key in _EMPLOYER_KEYS:
+            if key in _EMPLOYER_KEYS or key in _ADDITION_KEYS:
                 continue
             value = _q(amount)
             if value == 0:
@@ -101,6 +108,37 @@ def _deduction_lines(stub) -> list[dict]:
     return lines
 
 
+def _addition_lines(stub) -> list[dict]:
+    """Non-taxable additions to net pay (e.g. accountable-plan reimbursements).
+
+    Reads PayStub.reimbursements directly and supplements with any
+    `_ADDITION_KEYS` entries that show up in detail_json. These items have
+    already been added into stub.net_pay by routes/payroll.py — this list
+    is for display so the stub itemizes WHY net is higher than gross-minus-
+    deductions.
+    """
+    lines: list[dict] = []
+    reimb = _q(getattr(stub, "reimbursements", None))
+    if reimb != 0:
+        lines.append({"label": _ADDITION_KEYS["reimbursements"], "amount": reimb})
+
+    raw = getattr(stub, "detail_json", None)
+    if raw:
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            data = None
+        if isinstance(data, dict):
+            for key, amount in data.items():
+                if key not in _ADDITION_KEYS or key == "reimbursements":
+                    continue
+                value = _q(amount)
+                if value == 0:
+                    continue
+                lines.append({"label": _ADDITION_KEYS[key], "amount": value})
+    return lines
+
+
 def generate_paystub_pdf(stub, employee, pay_run, company: dict, ytd: dict) -> bytes:
     """Render an itemized employee pay stub to a PDF.
 
@@ -109,6 +147,8 @@ def generate_paystub_pdf(stub, employee, pay_run, company: dict, ytd: dict) -> b
     """
     deductions = _deduction_lines(stub)
     total_deductions = sum((d["amount"] for d in deductions), Decimal("0"))
+    additions = _addition_lines(stub)
+    total_additions = sum((a["amount"] for a in additions), Decimal("0"))
 
     ctx = {
         "stub": stub,
@@ -118,6 +158,8 @@ def generate_paystub_pdf(stub, employee, pay_run, company: dict, ytd: dict) -> b
         "ytd": ytd or {},
         "deductions": deductions,
         "total_deductions": _q(total_deductions),
+        "additions": additions,
+        "total_additions": _q(total_additions),
         "gross_pay": _q(stub.gross_pay),
         "net_pay": _q(stub.net_pay),
         "regular_hours": _q(stub.regular_hours),
