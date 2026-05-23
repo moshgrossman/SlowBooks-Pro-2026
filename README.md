@@ -6,7 +6,10 @@ Free and open source. Runs on Windows, macOS, and Linux. No Intuit activation se
 
 **Get started:** `docker compose up` — see **[INSTALL.md](INSTALL.md)** for all install options.
 
-![Slowbooks Pro 2026 — Company Snapshot](screenshots/dashboard-light.png)
+![Slowbooks Pro 2026 — Company Snapshot (Light)](screenshots/dashboard-light.png)
+![Slowbooks Pro 2026 — Company Snapshot (Dark)](screenshots/dashboard-dark.png)
+
+*Ships with both themes — toggle from the topbar or hit `Alt+D`. Choice persists in `localStorage`, so reloads stay in the theme you picked.*
 
 ---
 
@@ -38,13 +41,19 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ---
 
-### Wait — it does *that*?
+## Wait — it does *that*?
 
 A few things in here that aren't normal for self-hosted bookkeeping.
 
 **Cryptographically tamper-evident tax forms.** Every W-2, W-3, Form 940, and Form 941 PDF carries a **SHA-256 content hash and an audit ID printed in the footer**. Hand the printout to an auditor and they can recompute the hash, look it up against the local `document_audits` chain, and confirm the form hasn't been edited since you generated it. Not a watermark — a verification trail.
 
 **Bring-your-own-AI, including your own gateway.** AI Insights and 11 predefined analyses run against any of seven providers (xAI Grok, Groq, Cloudflare Workers AI, Anthropic Claude, OpenAI, Google Gemini) — or against a **Cloudflare Worker you host yourself**, so the prompt never leaves infrastructure you control. API keys are encrypted at rest with Fernet under a **versioned ciphertext you can rotate without downtime**.
+
+![Analytics dashboard with AI Insights](screenshots/analytics-dashboard.png)
+
+**One-click reseller-permit verification.** Type a customer's permit number — we validate the per-state digit pattern inline (WA 9-digit, CA 9–12, TX 11). Click **Verify** and your default browser pops the state's official lookup page; whatever you decide gets stamped onto the customer record as a who-and-when verification trail. No fake API integration that breaks in six months — just the workflow done right, with the digital permit encrypted at rest and the expiration date on the dashboard reminder strip.
+
+**Boots refuse to lie to you.** A startup self-check runs the wiring audit *before* uvicorn binds the port — if the JS bundle drifted from the Python routes (route renamed, container built off a stale checkout), the container fails to start instead of 404-ing mid-feature in production. CI runs the same check on every PR.
 
 ---
 
@@ -55,16 +64,24 @@ Full feature catalog (250+ bullets across every module) lives in **[docs/feature
 - **Accounts receivable** — Invoices, estimates, payments with multi-invoice allocation, credit memos, recurring schedules, batch payments, Quick Entry for paper backlogs.
 - **Accounts payable** — Purchase orders, bills (with vendor default expense accounts), bill payments, AP aging.
 - **Double-entry accounting** — Manual + auto journal entries, 39-account Chart of Accounts (Contractor template), closing-date enforcement, real-time balance updates, automatic audit log via SQLAlchemy event hooks.
+
+![Invoice editor seeded with IRS Pub 583 mock data](screenshots/invoices.png)
+
 - **Banking** — Bank register with running balance, deposits, credit-card charges, check printing (3-per-page), full reconciliation workflow, OFX/QFX import with FITID dedup.
 - **Reports & tax** — P&L, Balance Sheet, A/R & A/P Aging, General Ledger, Sales Tax with pay-to-government flow, Customer Statements, Schedule C export.
 - **Payroll & HR** — Full module with tax forms; see **[docs/payroll-hr-module.md](docs/payroll-hr-module.md)**.
 - **Analytics + AI** — Real-time BI layer with 8 metrics and a 90-day cash forecast; optional BYOK AI Insights layer. Full feature reference in [docs/features.md](docs/features.md#analytics).
 - **Inventory** — Perpetual-inventory ledger, automatic COGS, weighted-average cost, reorder points, valuation, manual adjustments.
+
+![Inventory tracking on the item form](screenshots/inventory-tracking.png)
+
+- **Duplicate detection** — Fuzzy match on customer/vendor names (difflib ≥ 0.85 after normalizing case, punctuation, and business suffixes like "Inc"/"LLC"). The form shows the matched names + similarity %; you confirm-and-create-anyway or back out.
+
+![Duplicate detection warning on customer create](screenshots/duplicate-detection.png)
+
 - **Online payments** — Stripe Checkout integration. See **[docs/setup-stripe.md](docs/setup-stripe.md)**.
 - **QuickBooks Online sync** — OAuth + bidirectional sync. See **[docs/setup-qbo.md](docs/setup-qbo.md)**.
 - **QB2003 interop** — IIF import/export with type-mapping, validation, and round-trip safety.
-
-![Invoices with IRS Pub 583 Mock Data](screenshots/invoices.png)
 
 ---
 
