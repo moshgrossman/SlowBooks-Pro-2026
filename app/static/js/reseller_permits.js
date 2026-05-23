@@ -66,10 +66,6 @@ const ResellerPermitsPage = {
                 const taxId = ResellerPermitsPage._taxIdFor(p, customers, vendors);
                 // Copy buttons: lets the operator paste the permit # + business
                 // name + tax ID into the state form without manual retyping.
-                const copyBtns = `
-                    <button class="btn btn-sm btn-secondary" title="Copy permit #" onclick="ResellerPermitsPage._copy('${escapeHtml(p.permit_number)}', 'Permit #')">⧉ #</button>
-                    <button class="btn btn-sm btn-secondary" title="Copy business name" onclick="ResellerPermitsPage._copy('${escapeHtml(businessName)}', 'Business name')">⧉ Name</button>
-                    ${taxId ? `<button class="btn btn-sm btn-secondary" title="Copy tax ID / UBI" onclick="ResellerPermitsPage._copy('${escapeHtml(taxId)}', 'Tax ID')">⧉ Tax ID</button>` : ''}`;
                 return `<tr>
                     <td>${escapeHtml(businessName)}</td>
                     <td>${escapeHtml(p.jurisdiction)}</td>
@@ -78,9 +74,7 @@ const ResellerPermitsPage = {
                     <td>${status}</td>
                     <td>${verifiedText}</td>
                     <td class="actions">
-                        ${copyBtns}
-                        ${verifyBtn}
-                        <button class="btn btn-sm btn-primary" onclick="ResellerPermitsPage.markVerified(${p.id})">Mark verified</button>
+                        <button class="btn btn-sm btn-primary" onclick="ResellerPermitsPage.verifyWorkflow(${p.id})">Verify…</button>
                         <button class="btn btn-sm btn-secondary" onclick="ResellerPermitsPage.showForm(${p.id})">Edit</button>
                         <button class="btn btn-sm btn-danger" onclick="ResellerPermitsPage.del(${p.id})">Delete</button>
                     </td>
@@ -226,6 +220,167 @@ const ResellerPermitsPage = {
         try {
             await API.post(`/reseller-permits/${id}/mark-verified`, { verified_by: who });
             toast('Marked verified');
+            App.navigate('#/reseller-permits');
+        } catch (err) { toast(err.message, 'error'); }
+    },
+
+    // -- Verify workflow ----------------------------------------------------
+    // One modal in our app that owns the whole verification round-trip:
+    //   1. Display permit summary + copy buttons (permit #, business name,
+    //      tax ID)
+    //   2. "Open lookup" button -> window.open() to the official state
+    //      page in a controlled popup sized for one-handed use
+    //   3. Outcome buttons -> POST mark-verified OR PUT is_active=false,
+    //      both refresh the page and close the modal + popup
+    //
+    // Why a popup instead of an iframe: every state DoR sets
+    // X-Frame-Options or frame-ancestors so an iframe just shows
+    // blank. The popup keeps the lookup in its own browser window
+    // (the operator sees it), but the verification action stays in
+    // our app — that's the "safely back to front" round trip.
+    async verifyWorkflow(id) {
+        let permit, customers, vendors;
+        try {
+            [permit, customers, vendors] = await Promise.all([
+                API.get(`/reseller-permits/${id}`),
+                API.get('/customers').catch(() => []),
+                API.get('/vendors').catch(() => []),
+            ]);
+        } catch (err) { toast(err.message, 'error'); return; }
+
+        const custById = Object.fromEntries(customers.map(c => [c.id, c]));
+        const vendById = Object.fromEntries(vendors.map(v => [v.id, v]));
+        const businessName = ResellerPermitsPage._businessNameFor(permit, custById, vendById);
+        const taxId = ResellerPermitsPage._taxIdFor(permit, customers, vendors);
+
+        // Stash the permit details in a module-level slot so the
+        // _openLookup() click handler can read them without re-fetching.
+        ResellerPermitsPage._currentVerify = {
+            id,
+            url: permit.verification_url,
+            state: permit.jurisdiction,
+        };
+
+        const lookupBtn = permit.verification_url
+            ? `<button class="btn btn-primary" onclick="ResellerPermitsPage._openLookup()">
+                   Open ${escapeHtml(permit.jurisdiction)} reseller-permit lookup →
+               </button>`
+            : `<p style="color:#a8761f;font-size:13px;margin:6px 0">
+                   No automated lookup URL on file for ${escapeHtml(permit.jurisdiction)}.
+                   Find your state's tax-agency permit lookup manually.
+               </p>`;
+
+        openModal(`Verify ${permit.jurisdiction} Permit`, `
+            <div style="font-size:13px;line-height:1.6">
+                <p style="margin:0 0 12px 0;color:#666">
+                    Round-trip: click <strong>Open lookup</strong>, the official state site opens
+                    in a popup, verify there, then come back and record the outcome here.
+                    Your <em>Mark verified</em> click is the audit trail — it stamps who and when.
+                </p>
+
+                <table class="data-table" style="margin-bottom:14px">
+                    <tr>
+                        <td style="width:30%"><strong>Permit #</strong></td>
+                        <td><code style="font-size:14px">${escapeHtml(permit.permit_number)}</code>
+                            <button class="btn btn-sm btn-secondary" style="margin-left:8px"
+                                onclick="ResellerPermitsPage._copy('${escapeHtml(permit.permit_number)}', 'Permit #')">⧉ Copy</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Business name</strong></td>
+                        <td>${escapeHtml(businessName)}
+                            <button class="btn btn-sm btn-secondary" style="margin-left:8px"
+                                onclick="ResellerPermitsPage._copy('${escapeHtml(businessName)}', 'Business name')">⧉ Copy</button>
+                        </td>
+                    </tr>
+                    ${taxId ? `<tr>
+                        <td><strong>Tax ID${permit.jurisdiction === 'WA' ? ' / UBI' : ''}</strong></td>
+                        <td><code>${escapeHtml(taxId)}</code>
+                            <button class="btn btn-sm btn-secondary" style="margin-left:8px"
+                                onclick="ResellerPermitsPage._copy('${escapeHtml(taxId)}', 'Tax ID')">⧉ Copy</button>
+                        </td>
+                    </tr>` : ''}
+                    ${permit.expires_at ? `<tr>
+                        <td><strong>On file expires</strong></td>
+                        <td>${escapeHtml(permit.expires_at)} ${permit.is_expired
+                            ? '<span style="color:#a4242b;font-weight:600;margin-left:8px">EXPIRED</span>'
+                            : (permit.days_to_expire !== null && permit.days_to_expire <= 30
+                                ? `<span style="color:#a8761f;margin-left:8px">in ${permit.days_to_expire} days</span>`
+                                : '')}</td>
+                    </tr>` : ''}
+                </table>
+
+                <div style="background:#f4f6f9;padding:12px;border-radius:4px;margin-bottom:14px">
+                    <strong>Step 1.</strong> ${lookupBtn}
+                </div>
+
+                <div style="margin-bottom:8px"><strong>Step 2.</strong> Record what you found:</div>
+                <div class="form-grid" style="margin-bottom:8px">
+                    <div class="form-group" style="grid-column: 1 / -1">
+                        <label>Your name or initials (for the audit trail)</label>
+                        <input id="verify-by" type="text" placeholder="e.g. Trent / TVH / ticket #42">
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-primary"
+                            onclick="ResellerPermitsPage._recordVerify(${id}, true)">
+                        ✓ Permit is valid — Mark Verified
+                    </button>
+                    <button class="btn btn-danger"
+                            onclick="ResellerPermitsPage._recordVerify(${id}, false)">
+                        ✗ Permit is expired / invalid — Mark Inactive
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                </div>
+            </div>`);
+    },
+
+    _openLookup() {
+        const cur = ResellerPermitsPage._currentVerify;
+        if (!cur || !cur.url) return;
+        // Always confirm before sending the operator off to an external
+        // site — partly because state-DoR pages aren't sandboxed and we
+        // want the operator to consciously leave the app, partly so popup
+        // blockers don't fire silently.
+        const ok = confirm(
+            `Open the ${cur.state} reseller-permit lookup in your default browser?\n\n` +
+            `URL: ${cur.url}\n\n` +
+            `After you verify there, come back here to record the outcome.`
+        );
+        if (!ok) return;
+        // _blank + noopener routes to the user's default browser handler
+        // (new tab or new window depending on their settings). No JS
+        // bridge between the two windows — the operator returns here
+        // manually, which is the whole point of the audit trail.
+        window.open(cur.url, '_blank', 'noopener,noreferrer');
+    },
+
+    async _recordVerify(id, isValid) {
+        const who = (document.getElementById('verify-by')?.value || '').trim();
+        try {
+            if (isValid) {
+                await API.post(`/reseller-permits/${id}/mark-verified`, { verified_by: who });
+                toast('Permit marked verified');
+            } else {
+                // Mark inactive AND stamp last_verified_at so the audit
+                // trail records that we DID check, not that we just ignored
+                // it. The PUT endpoint takes a full body, so refetch the
+                // current state and re-send it with is_active flipped.
+                const cur = await API.get(`/reseller-permits/${id}`);
+                await API.put(`/reseller-permits/${id}`, {
+                    entity_type: cur.entity_type,
+                    entity_id: cur.entity_id,
+                    jurisdiction: cur.jurisdiction,
+                    permit_number: cur.permit_number,
+                    issued_at: cur.issued_at,
+                    expires_at: cur.expires_at,
+                    notes: cur.notes,
+                    is_active: false,
+                });
+                await API.post(`/reseller-permits/${id}/mark-verified`, { verified_by: who });
+                toast('Permit marked inactive + verification logged');
+            }
+            closeModal();
             App.navigate('#/reseller-permits');
         } catch (err) { toast(err.message, 'error'); }
     },
