@@ -71,7 +71,7 @@ SlowBooks-Pro-2026/
 │   │   ├── reseller_permit.py # Per-entity reseller permits
 │   │   └── email_templates.py # Customizable email templates
 │   ├── schemas/              # Pydantic request/response models
-│   ├── routes/               # FastAPI routers (43+ routers)
+│   ├── routes/               # FastAPI routers (50 routers, 300+ routes)
 │   ├── services/
 │   │   ├── accounting.py     # Double-entry journal entry engine
 │   │   ├── analytics.py      # Business intelligence aggregates (8 methods)
@@ -127,6 +127,28 @@ SlowBooks-Pro-2026/
 ├── tests/                    # 297 pytest tests (auth, security, posting, reporting, import, payroll Tiers 1-3, HR, wiring audit, schema audit, jinja autoescape audit)
 └── index.html                # SPA shell
 ```
+
+### Where things go when you add code
+
+- **New HTTP endpoint** — drop into `app/routes/<domain>.py`. Define
+  an `APIRouter(prefix="/api/...", tags=[...])`, attach `@router.get`
+  / `@router.post` / etc., then `app.include_router(router)` in
+  `app/main.py`. Group by domain — add to the smallest existing
+  router file, or create a new one for a new feature area.
+- **New DB table** — model goes in `app/models/<name>.py`. Test
+  setup uses `Base.metadata.create_all()` so fresh installs pick it
+  up; for in-place upgrades on existing deploys, add an Alembic
+  migration in `migrations/versions/`.
+- **New Pydantic shape** — `app/schemas/<domain>.py`. **Beware the
+  `date: date` field-shadows-type collision** — see
+  [CONTRIBUTING.md → Schema conventions](../CONTRIBUTING.md#-the-date-date-field-name-shadows-the-type-collision).
+- **New SPA page** — `app/static/js/<name>.js` exporting a module
+  object with a `render()` method; register the hash route in
+  `app/static/js/app.js`. Talk to the backend through `API.get/post/
+  put/del` (the `del` spelling matters — not `delete`).
+- **Tests** — `tests/test_<area>.py`. The wiring audit
+  (`tests/test_wiring.py`) will fail CI if your new endpoint has no
+  SPA caller AND isn't on the `_INTENTIONAL_BACKEND_ONLY` allowlist.
 
 ---
 

@@ -41,22 +41,78 @@ bottom; leave that in.
   style; no semicolons-vs-not crusade.
 - **Tests**: every behavior change comes with a test. Tests live under
   `tests/` and are run with `pytest tests/ -q`. The full suite runs in
-  under 30 seconds with no network dependencies.
+  under 60 seconds with no network dependencies. Common fixtures
+  (defined in [tests/conftest.py](tests/conftest.py)):
+  - `client` — authenticated `TestClient`. Use for most tests.
+  - `unauthed_client` — `TestClient` with no session. Use only for
+    auth-flow tests (setup, login, logout).
+  - `db_session` — isolated SQLAlchemy session backed by an in-memory
+    SQLite DB; cleared between tests.
+  - `seed_accounts` — chart-of-accounts pre-loaded.
+  - `seed_customer` — a single active customer pre-loaded.
+
+  Picking the wrong client fixture is the most common newbie miss:
+  using `unauthed_client` against a protected route silently 401s.
 
 ## Adding a feature
 
-A normal feature touches all five layers; please cover them:
+A full feature touches all five layers — but **you don't always need
+all five**. For a one-endpoint addition (e.g. `GET /api/hello`
+returning a dict), skip straight to steps 4 + 6.
 
 1. **Model** in `app/models/` — SQLAlchemy class plus any enum types
 2. **Schema** in `app/schemas/` — Pydantic request/response shapes
 3. **Service** in `app/services/` — business logic, when there is any
 4. **Route** in `app/routes/` — `APIRouter` with `@router.get/post/...`
-   decorators. Register it in `app/main.py`.
+   decorators. Register it in `app/main.py`. Group routes by domain;
+   add to the smallest related file, or create a new file for a new
+   feature area. Don't pile unrelated endpoints into `main.py`.
 5. **Frontend** in `app/static/js/` — vanilla JS module, registered as a
    hash route in `app/static/js/app.js`. Use the `API` helper from
    `app/static/js/api.js` — note `API.del` (not `API.delete`)
 6. **Tests** in `tests/test_<area>.py` covering at least the happy path
    and one failure mode
+
+### Tiniest possible example
+
+A minimal route + test, end to end:
+
+```python
+# app/routes/hello.py
+from fastapi import APIRouter
+router = APIRouter(prefix="/api", tags=["hello"])
+
+@router.get("/hello")
+def hello():
+    return {"message": "hi"}
+```
+
+```python
+# app/main.py — add the import + include
+from app.routes import hello
+app.include_router(hello.router)
+```
+
+```python
+# tests/test_hello.py
+def test_hello(client):
+    r = client.get("/api/hello")
+    assert r.status_code == 200
+    assert r.json() == {"message": "hi"}
+```
+
+That's the whole flow — no model, no schema, no service, no frontend
+needed for an endpoint that doesn't touch the DB.
+
+### Backend-only endpoints
+
+The wiring audit (`tests/test_wiring.py`) catches JS callers that
+point at non-existent routes (forward direction) AND backend routes
+that have no SPA caller (reverse direction). If your endpoint is
+deliberately not surfaced in the SPA — a webhook, an admin-only
+utility, a cron-job target — add it to `_INTENTIONAL_BACKEND_ONLY`
+in `tests/test_wiring.py` with a one-line comment explaining why.
+Otherwise the reverse test fails and the CI build is red.
 
 ## Schema conventions
 
