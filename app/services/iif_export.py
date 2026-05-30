@@ -34,9 +34,23 @@ def _iif_date(d: date) -> str:
     return d.strftime("%m/%d/%Y") if d else ""
 
 
+def _iif_clean(value) -> str:
+    """Strip tabs and CR/LF from a field so user-supplied text can't break
+    the IIF format. A customer named with a literal tab (or a memo with an
+    embedded newline) would otherwise shift every following column or split
+    one logical row into two, leaving the importing QuickBooks instance
+    parsing garbage. Replaces with a single space."""
+    if value is None:
+        return ""
+    s = str(value)
+    return s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
 def _tab_join(fields: list) -> str:
-    """Join fields with tabs, converting None to empty string."""
-    return "\t".join(str(f) if f is not None else "" for f in fields)
+    """Join fields with tabs, converting None to empty string. Each field is
+    sanitized so embedded tabs / newlines can't smuggle extra columns or
+    rows into the output."""
+    return "\t".join(_iif_clean(f) for f in fields)
 
 
 def _iif_line(fields: list) -> str:
