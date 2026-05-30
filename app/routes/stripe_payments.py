@@ -93,14 +93,25 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     invoice_id = int(session["metadata"]["invoice_id"])
     session_id = session["id"]
 
-    # Idempotency: check if payment already recorded for this session
+    # Idempotency under contention: Stripe will retry with a backoff on any
+    # non-2xx; in practice two webhook deliveries can land milliseconds apart.
+    # A plain check-then-insert against Payment.reference would let both pass
+    # the existence guard and create two payments. Row-lock the invoice so
+    # the second arrival serializes behind the first and sees the already-
+    # recorded payment on its idempotency re-check.
+    invoice = (
+        db.query(Invoice)
+        .filter(Invoice.id == invoice_id)
+        .with_for_update()
+        .first()
+    )
+    if not invoice:
+        return {"status": "invoice_not_found"}
+
     existing = db.query(Payment).filter(Payment.reference == session_id).first()
     if existing:
         return {"status": "already_processed"}
 
-    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
-    if not invoice:
-        return {"status": "invoice_not_found"}
     if invoice.status in (InvoiceStatus.PAID, InvoiceStatus.VOID):
         return {"status": "invoice_already_settled"}
 
