@@ -248,3 +248,103 @@ def test_bill_same_number_different_vendors_is_allowed(
         },
     )
     assert r2.status_code == 201, r2.text
+
+
+# ---------------------------------------------------------------------------
+# Payroll input validation
+# ---------------------------------------------------------------------------
+
+
+def _employee(client):
+    r = client.post(
+        "/api/employees",
+        json={
+            "first_name": "Test", "last_name": "E",
+            "ssn": "123-45-6789", "filing_status": "single",
+            "pay_rate": 25, "pay_frequency": "biweekly",
+            "state": "WA", "date_of_hire": "2026-01-01",
+        },
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def test_payroll_rejects_negative_hours(client, db_session):
+    emp_id = _employee(client)
+    r = client.post(
+        "/api/payroll",
+        json={
+            "period_start": "2026-05-01", "period_end": "2026-05-14",
+            "pay_date": "2026-05-15", "run_type": "regular",
+            "stubs": [{"employee_id": emp_id, "hours": -40}],
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_payroll_rejects_negative_overtime(client, db_session):
+    emp_id = _employee(client)
+    r = client.post(
+        "/api/payroll",
+        json={
+            "period_start": "2026-05-01", "period_end": "2026-05-14",
+            "pay_date": "2026-05-15", "run_type": "regular",
+            "stubs": [{"employee_id": emp_id, "hours": 80, "overtime_hours": -10}],
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_payroll_rejects_negative_gross_override(client, db_session):
+    emp_id = _employee(client)
+    r = client.post(
+        "/api/payroll",
+        json={
+            "period_start": "2026-05-01", "period_end": "2026-05-14",
+            "pay_date": "2026-05-15", "run_type": "regular",
+            "stubs": [{"employee_id": emp_id, "hours": 0, "gross_override": -100}],
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+# ---------------------------------------------------------------------------
+# Pagination bounds
+# ---------------------------------------------------------------------------
+
+
+def test_list_invoices_clamps_negative_limit(client, db_session, seed_accounts, seed_customer):
+    # Seed a couple invoices so pagination has rows to return
+    for _ in range(3):
+        client.post(
+            "/api/invoices",
+            json={
+                "customer_id": seed_customer.id, "date": "2026-05-01",
+                "terms": "Net 30", "tax_rate": 0,
+                "lines": [{"description": "x", "quantity": 1, "rate": 10, "line_order": 0}],
+            },
+        )
+
+    # Pre-fix: limit=-1 reached SQLAlchemy's .limit(-1) which returns all
+    # rows; skip=-1 reached .offset(-1) which is undefined behavior. Both
+    # should be clamped to a sane range.
+    r = client.get("/api/invoices?limit=-1")
+    assert r.status_code == 200
+    assert len(r.json()) >= 1  # clamped to >= 1, not 0 or all
+
+    r = client.get("/api/invoices?skip=-5")
+    assert r.status_code == 200
+    assert len(r.json()) == 3  # clamped offset to 0
+
+
+def test_list_invoices_clamps_huge_limit(client, db_session, seed_accounts, seed_customer):
+    client.post(
+        "/api/invoices",
+        json={
+            "customer_id": seed_customer.id, "date": "2026-05-01",
+            "terms": "Net 30", "tax_rate": 0,
+            "lines": [{"description": "x", "quantity": 1, "rate": 10, "line_order": 0}],
+        },
+    )
+    r = client.get("/api/invoices?limit=999999")
+    assert r.status_code == 200  # clamped to upper bound, not 422

@@ -117,7 +117,8 @@ def _with_employee_names(run: PayRun) -> PayRunResponse:
 
 @router.get("", response_model=list[PayRunResponse])
 def list_pay_runs(skip: int = 0, limit: int = 200, db: Session = Depends(get_db)):
-    limit = min(limit, 500)
+    limit = max(1, min(limit, 500))
+    skip = max(0, skip)
     runs = (
         db.query(PayRun)
         .options(joinedload(PayRun.stubs).joinedload(PayStub.employee))

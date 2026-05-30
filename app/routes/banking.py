@@ -82,7 +82,8 @@ def list_bank_transactions(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = min(limit, 1000)
+    limit = max(1, min(limit, 1000))
+    skip = max(0, skip)
     q = db.query(BankTransaction)
     if bank_account_id:
         q = q.filter(BankTransaction.bank_account_id == bank_account_id)

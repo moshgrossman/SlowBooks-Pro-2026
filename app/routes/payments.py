@@ -33,7 +33,8 @@ def list_payments(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = min(limit, 1000)
+    limit = max(1, min(limit, 1000))
+    skip = max(0, skip)
     q = db.query(Payment)
     if customer_id:
         q = q.filter(Payment.customer_id == customer_id)

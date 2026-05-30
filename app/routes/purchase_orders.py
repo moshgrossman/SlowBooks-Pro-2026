@@ -35,7 +35,8 @@ def list_pos(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = min(limit, 1000)
+    limit = max(1, min(limit, 1000))
+    skip = max(0, skip)
     q = db.query(PurchaseOrder)
     if vendor_id:
         q = q.filter(PurchaseOrder.vendor_id == vendor_id)

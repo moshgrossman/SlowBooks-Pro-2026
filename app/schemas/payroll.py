@@ -1,6 +1,6 @@
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +115,29 @@ class PayStubInput(BaseModel):
     use_time_entries: bool = (
         False  # pull approved time entries for the period instead of `hours`
     )
+
+    @model_validator(mode="after")
+    def _check_non_negative(self):
+        """Negative hours / deductions / overrides silently produce a $0
+        paystub today (the tax engines clamp at zero, and the response just
+        says total_gross=0). That's confusing UX and masks data-entry
+        mistakes; reject at the boundary instead."""
+        nonneg_fields = [
+            ("hours", self.hours),
+            ("overtime_hours", self.overtime_hours),
+            ("doubletime_hours", self.doubletime_hours),
+            ("pretax_deductions", self.pretax_deductions),
+            ("posttax_deductions", self.posttax_deductions),
+            ("reimbursements", self.reimbursements),
+        ]
+        if self.regular_hours is not None:
+            nonneg_fields.append(("regular_hours", self.regular_hours))
+        if self.gross_override is not None:
+            nonneg_fields.append(("gross_override", self.gross_override))
+        for name, val in nonneg_fields:
+            if val is not None and val < 0:
+                raise ValueError(f"{name} must be non-negative (got {val})")
+        return self
 
 
 class PayRunCreate(BaseModel):

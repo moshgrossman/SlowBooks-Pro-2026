@@ -168,7 +168,8 @@ def list_invoices(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = min(limit, 1000)
+    limit = max(1, min(limit, 1000))
+    skip = max(0, skip)
     q = db.query(Invoice)
     if status:
         q = q.filter(Invoice.status == status)

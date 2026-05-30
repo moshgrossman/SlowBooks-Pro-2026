@@ -53,7 +53,8 @@ def list_credit_memos(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = min(limit, 1000)
+    limit = max(1, min(limit, 1000))
+    skip = max(0, skip)
     q = db.query(CreditMemo)
     if customer_id:
         q = q.filter(CreditMemo.customer_id == customer_id)
