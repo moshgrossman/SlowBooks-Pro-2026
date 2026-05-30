@@ -10,6 +10,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -90,22 +91,44 @@ def create_estimate(data: EstimateCreate, db: Session = Depends(get_db)):
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    estimate_number = _next_estimate_number(db)
+    cust_id = customer.id
+    cust_name = customer.name
     subtotal, tax_amount, total = compute_line_totals(data.lines, data.tax_rate)
 
-    estimate = Estimate(
-        estimate_number=estimate_number,
-        customer_id=data.customer_id,
-        date=data.date,
-        expiration_date=data.expiration_date,
-        subtotal=subtotal,
-        tax_rate=data.tax_rate,
-        tax_amount=tax_amount,
-        total=total,
-        notes=data.notes,
-    )
-    db.add(estimate)
-    db.flush()
+    estimate = None
+    estimate_number = None
+    last_err = None
+    # Same race as create_invoice: _next_estimate_number's check-then-insert
+    # window lets two concurrent creates pick the same number. Retry on
+    # IntegrityError; the UNIQUE constraint is the safety net.
+    for _ in range(10):
+        estimate_number = _next_estimate_number(db)
+        estimate = Estimate(
+            estimate_number=estimate_number,
+            customer_id=cust_id,
+            date=data.date,
+            expiration_date=data.expiration_date,
+            subtotal=subtotal,
+            tax_rate=data.tax_rate,
+            tax_amount=tax_amount,
+            total=total,
+            notes=data.notes,
+        )
+        db.add(estimate)
+        try:
+            db.flush()
+            break
+        except IntegrityError as e:
+            if "estimate_number" not in str(e.orig).lower():
+                raise
+            last_err = e
+            db.rollback()
+            estimate = None
+    if estimate is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not assign a unique estimate number; please retry.",
+        ) from last_err
 
     for i, line_data in enumerate(data.lines):
         line = EstimateLine(
@@ -131,7 +154,7 @@ def create_estimate(data: EstimateCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(estimate)
     resp = EstimateResponse.model_validate(estimate)
-    resp.customer_name = customer.name
+    resp.customer_name = cust_name
     return resp
 
 

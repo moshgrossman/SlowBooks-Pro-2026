@@ -68,3 +68,71 @@ def test_repeated_creates_assign_sequential_numbers(
         numbers.append(r.json()["invoice_number"])
 
     assert numbers == ["1001", "1002", "1003", "1004", "1005"]
+
+
+def test_po_collision_retries_and_succeeds(client, db_session, seed_accounts):
+    """Same retry pattern wired into create_po."""
+    from app.models.contacts import Vendor
+    from app.models.purchase_orders import PurchaseOrder
+
+    v = Vendor(name="V", is_active=True)
+    db_session.add(v)
+    db_session.commit()
+
+    # Pre-seed a PO with what _next_po_number returns first.
+    db_session.add(
+        PurchaseOrder(
+            po_number="PO-0001",
+            vendor_id=v.id,
+            date=date(2026, 5, 1),
+            subtotal=Decimal("0"),
+            tax_rate=Decimal("0"),
+            tax_amount=Decimal("0"),
+            total=Decimal("0"),
+        )
+    )
+    db_session.commit()
+
+    r = client.post(
+        "/api/purchase-orders",
+        json={
+            "vendor_id": v.id,
+            "date": "2026-05-02",
+            "tax_rate": 0,
+            "lines": [{"description": "x", "quantity": 1, "rate": 10, "line_order": 0}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["po_number"] == "PO-0002"
+
+
+def test_estimate_collision_retries_and_succeeds(
+    client, db_session, seed_accounts, seed_customer
+):
+    """Same retry pattern wired into create_estimate."""
+    from app.models.estimates import Estimate
+
+    db_session.add(
+        Estimate(
+            estimate_number="E-1001",
+            customer_id=seed_customer.id,
+            date=date(2026, 5, 1),
+            subtotal=Decimal("0"),
+            tax_rate=Decimal("0"),
+            tax_amount=Decimal("0"),
+            total=Decimal("0"),
+        )
+    )
+    db_session.commit()
+
+    r = client.post(
+        "/api/estimates",
+        json={
+            "customer_id": seed_customer.id,
+            "date": "2026-05-02",
+            "tax_rate": 0,
+            "lines": [{"description": "x", "quantity": 1, "rate": 10, "line_order": 0}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["estimate_number"] == "E-1002"

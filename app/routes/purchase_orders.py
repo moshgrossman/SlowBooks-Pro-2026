@@ -8,6 +8,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sqlfunc
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.models.purchase_orders import PurchaseOrder, PurchaseOrderLine, POStatus
@@ -67,23 +68,45 @@ def create_po(data: POCreate, db: Session = Depends(get_db)):
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    po_number = _next_po_number(db)
+    vendor_id = vendor.id
+    vendor_name = vendor.name
     subtotal, tax_amount, total = compute_line_totals(data.lines, data.tax_rate)
 
-    po = PurchaseOrder(
-        po_number=po_number,
-        vendor_id=data.vendor_id,
-        date=data.date,
-        expected_date=data.expected_date,
-        ship_to=data.ship_to,
-        subtotal=subtotal,
-        tax_rate=data.tax_rate,
-        tax_amount=tax_amount,
-        total=total,
-        notes=data.notes,
-    )
-    db.add(po)
-    db.flush()
+    po = None
+    po_number = None
+    last_err = None
+    # Same race as create_invoice / create_estimate: _next_po_number is MAX+1
+    # without a row-level lock, so two concurrent creates can collide on the
+    # po_number UNIQUE constraint. Retry on IntegrityError.
+    for _ in range(10):
+        po_number = _next_po_number(db)
+        po = PurchaseOrder(
+            po_number=po_number,
+            vendor_id=vendor_id,
+            date=data.date,
+            expected_date=data.expected_date,
+            ship_to=data.ship_to,
+            subtotal=subtotal,
+            tax_rate=data.tax_rate,
+            tax_amount=tax_amount,
+            total=total,
+            notes=data.notes,
+        )
+        db.add(po)
+        try:
+            db.flush()
+            break
+        except IntegrityError as e:
+            if "po_number" not in str(e.orig).lower():
+                raise
+            last_err = e
+            db.rollback()
+            po = None
+    if po is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not assign a unique PO number; please retry.",
+        ) from last_err
 
     for i, line_data in enumerate(data.lines):
         line = PurchaseOrderLine(
@@ -102,7 +125,7 @@ def create_po(data: POCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(po)
     resp = POResponse.model_validate(po)
-    resp.vendor_name = vendor.name
+    resp.vendor_name = vendor_name
     return resp
 
 
