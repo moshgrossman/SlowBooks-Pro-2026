@@ -27,6 +27,7 @@ from app.models.invoices import Invoice, InvoiceLine, InvoiceStatus
 from app.models.payments import Payment, PaymentAllocation
 from app.models.estimates import Estimate, EstimateLine, EstimateStatus
 from app.services.accounting import (
+    _q,
     create_journal_entry,
     get_ar_account_id,
     get_default_income_account_id,
@@ -721,7 +722,10 @@ def _import_invoice(db: Session, trns: dict, spls: list) -> Invoice:
 
     for spl in spls:
         acct_name = spl.get("ACCNT", "").strip()
-        spl_amount = abs(_parse_decimal(spl.get("AMOUNT", "")))
+        # Quantize each SPL amount to 2dp before accumulating so the stored
+        # subtotal matches sum(line.amount). QB Pro fuel-surcharge / per-unit
+        # exports sometimes emit sub-cent AMOUNT values that drift otherwise.
+        spl_amount = _q(abs(_parse_decimal(spl.get("AMOUNT", ""))))
         memo = spl.get("MEMO", "").strip()
 
         # Tax split
@@ -740,7 +744,7 @@ def _import_invoice(db: Session, trns: dict, spls: list) -> Invoice:
         qty = abs(_parse_decimal(spl.get("QNTY", ""))) or Decimal("1")
         rate = abs(_parse_decimal(spl.get("PRICE", "")))
         if rate == 0 and qty > 0:
-            rate = spl_amount / qty
+            rate = _q(spl_amount / qty)
 
         line = InvoiceLine(
             invoice_id=invoice.id,
@@ -776,7 +780,9 @@ def _import_invoice(db: Session, trns: dict, spls: list) -> Invoice:
         # Find income account for credit side
         for spl in spls:
             acct_name = spl.get("ACCNT", "").strip()
-            spl_amount = abs(_parse_decimal(spl.get("AMOUNT", "")))
+            # Quantize to match the per-line amount written above; otherwise
+            # the JE credits could land a cent off the AR debit when stored.
+            spl_amount = _q(abs(_parse_decimal(spl.get("AMOUNT", ""))))
             if spl_amount == 0:
                 continue
             acct = _find_account(db, acct_name)
@@ -987,7 +993,10 @@ def _import_estimate(db: Session, trns: dict, spls: list) -> Estimate:
 
     for spl in spls:
         acct_name = spl.get("ACCNT", "").strip()
-        spl_amount = abs(_parse_decimal(spl.get("AMOUNT", "")))
+        # Same per-line quantization the invoice import uses; keeps stored
+        # subtotal aligned with sum(line.amount) when the source IIF has
+        # sub-cent AMOUNT values.
+        spl_amount = _q(abs(_parse_decimal(spl.get("AMOUNT", ""))))
         memo = spl.get("MEMO", "").strip()
 
         if "tax" in acct_name.lower():
@@ -1004,7 +1013,7 @@ def _import_estimate(db: Session, trns: dict, spls: list) -> Estimate:
         qty = abs(_parse_decimal(spl.get("QNTY", ""))) or Decimal("1")
         rate = abs(_parse_decimal(spl.get("PRICE", "")))
         if rate == 0 and qty > 0:
-            rate = spl_amount / qty
+            rate = _q(spl_amount / qty)
 
         line = EstimateLine(
             estimate_id=estimate.id,
