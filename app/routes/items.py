@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_ as sqla_and_, or_ as sqla_or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -38,7 +39,13 @@ def list_items(
 
 @router.get("/low-stock", response_model=list[LowStockResponse])
 def low_stock_items(db: Session = Depends(get_db)):
-    """Items where quantity_on_hand <= reorder_point (and reorder_point > 0).
+    """Items where quantity_on_hand <= reorder_point (and reorder_point > 0),
+    plus any item whose on-hand has gone negative.
+
+    Negative on-hand happens when a sale is invoiced before the receiving
+    bill is entered (the inventory service allows it). Without surfacing
+    these here, an operator who never sets a reorder_point can sell a
+    widget into the red and never see a warning.
 
     Returned sorted worst-shortage-first so the most urgent re-orders come first.
     """
@@ -46,8 +53,12 @@ def low_stock_items(db: Session = Depends(get_db)):
         db.query(Item)
         .filter(Item.track_inventory == True)  # noqa
         .filter(Item.is_active == True)  # noqa
-        .filter(Item.reorder_point > 0)
-        .filter(Item.quantity_on_hand <= Item.reorder_point)
+        .filter(
+            sqla_or_(
+                sqla_and_(Item.reorder_point > 0, Item.quantity_on_hand <= Item.reorder_point),
+                Item.quantity_on_hand < 0,
+            )
+        )
         .all()
     )
     out = []
