@@ -6,7 +6,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func as sqlfunc
 from sqlalchemy.exc import IntegrityError
 
@@ -37,7 +37,11 @@ def list_pos(
 ):
     limit = max(1, min(limit, 1000))
     skip = max(0, skip)
-    q = db.query(PurchaseOrder)
+    # Eager-load to avoid N+1 on .vendor and .lines during model_validate.
+    q = db.query(PurchaseOrder).options(
+        joinedload(PurchaseOrder.vendor),
+        selectinload(PurchaseOrder.lines),
+    )
     if vendor_id:
         q = q.filter(PurchaseOrder.vendor_id == vendor_id)
     if status:

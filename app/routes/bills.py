@@ -7,7 +7,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.models.bills import Bill, BillLine, BillStatus
@@ -36,7 +36,12 @@ def list_bills(
 ):
     limit = max(1, min(limit, 1000))
     skip = max(0, skip)
-    q = db.query(Bill)
+    # Eager-load vendor + lines so a 500-row list doesn't fire 1001
+    # follow-up SELECTs through BillResponse.model_validate.
+    q = db.query(Bill).options(
+        joinedload(Bill.vendor),
+        selectinload(Bill.lines),
+    )
     if vendor_id:
         q = q.filter(Bill.vendor_id == vendor_id)
     if status:

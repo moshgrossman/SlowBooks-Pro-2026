@@ -12,7 +12,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from fastapi.responses import Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.models.estimates import Estimate, EstimateLine, EstimateStatus
@@ -59,7 +59,11 @@ def _next_estimate_number(db: Session) -> str:
 def list_estimates(
     status: str = None, customer_id: int = None, db: Session = Depends(get_db)
 ):
-    q = db.query(Estimate)
+    # Eager-load .customer and .lines to avoid N+1 during model_validate.
+    q = db.query(Estimate).options(
+        joinedload(Estimate.customer),
+        selectinload(Estimate.lines),
+    )
     if status:
         q = q.filter(Estimate.status == status)
     if customer_id:

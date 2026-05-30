@@ -6,7 +6,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func as sqlfunc
 
 from app.database import get_db
@@ -55,7 +55,11 @@ def list_credit_memos(
 ):
     limit = max(1, min(limit, 1000))
     skip = max(0, skip)
-    q = db.query(CreditMemo)
+    # Eager-load .customer and .lines to avoid N+1 during model_validate.
+    q = db.query(CreditMemo).options(
+        joinedload(CreditMemo.customer),
+        selectinload(CreditMemo.lines),
+    )
     if customer_id:
         q = q.filter(CreditMemo.customer_id == customer_id)
     if status:

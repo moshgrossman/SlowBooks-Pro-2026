@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func as sqlfunc
 from sqlalchemy.exc import IntegrityError
 
@@ -170,7 +170,14 @@ def list_invoices(
 ):
     limit = max(1, min(limit, 1000))
     skip = max(0, skip)
-    q = db.query(Invoice)
+    # Eager-load customer (used for customer_name) and lines (in the
+    # response model). Without these, returning 500 invoices triggered
+    # 1001 extra queries — one per .customer access and one per .lines
+    # access during model_validate.
+    q = db.query(Invoice).options(
+        joinedload(Invoice.customer),
+        selectinload(Invoice.lines),
+    )
     if status:
         q = q.filter(Invoice.status == status)
     if customer_id:

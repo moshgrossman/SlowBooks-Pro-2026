@@ -9,7 +9,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.models.payments import Payment, PaymentAllocation
@@ -35,7 +35,11 @@ def list_payments(
 ):
     limit = max(1, min(limit, 1000))
     skip = max(0, skip)
-    q = db.query(Payment)
+    # Eager-load to avoid N+1 on .customer and .allocations during model_validate.
+    q = db.query(Payment).options(
+        joinedload(Payment.customer),
+        selectinload(Payment.allocations),
+    )
     if customer_id:
         q = q.filter(Payment.customer_id == customer_id)
     payments = q.order_by(Payment.date.desc()).offset(skip).limit(limit).all()
