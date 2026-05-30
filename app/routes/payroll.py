@@ -405,6 +405,8 @@ def create_pay_run(data: PayRunCreate, db: Session = Depends(get_db)):
 @router.post("/{run_id}/process")
 def process_pay_run(run_id: int, db: Session = Depends(get_db)):
     """Process a pay run — posts the payroll journal entry."""
+    from app.services.closing_date import check_closing_date
+
     run = (
         db.query(PayRun)
         .options(joinedload(PayRun.stubs))
@@ -417,6 +419,10 @@ def process_pay_run(run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Pay run already processed")
     if run.status == PayRunStatus.VOID:
         raise HTTPException(status_code=400, detail="Pay run is void")
+    # Pay-run processing posts a dated JE; subject to closing-date enforcement
+    # like every other JE-posting route. Without this, an operator can process
+    # a backdated pay run into a closed period.
+    check_closing_date(db, run.pay_date)
 
     def _acct(num, fallback=None):
         a = db.query(Account).filter(Account.account_number == num).first()

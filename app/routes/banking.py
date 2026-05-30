@@ -142,17 +142,24 @@ def get_reconciliation_transactions(recon_id: int, db: Session = Depends(get_db)
         .all()
     )
 
-    cleared_total = sum(float(t.amount) for t in txns if t.reconciled)
-    uncleared_total = sum(float(t.amount) for t in txns if not t.reconciled)
-    statement_bal = float(recon.statement_balance)
+    # Sum and subtract in Decimal so a reconciliation that's actually zero
+    # doesn't show $0.00000001 of "difference" from float drift over hundreds
+    # of cleared transactions. Convert to float only at the JSON boundary.
+    cleared_total = sum(
+        (Decimal(str(t.amount)) for t in txns if t.reconciled), Decimal("0")
+    )
+    uncleared_total = sum(
+        (Decimal(str(t.amount)) for t in txns if not t.reconciled), Decimal("0")
+    )
+    statement_bal = Decimal(str(recon.statement_balance or 0))
     difference = statement_bal - cleared_total
 
     return {
         "reconciliation_id": recon.id,
-        "statement_balance": statement_bal,
-        "cleared_total": cleared_total,
-        "uncleared_total": uncleared_total,
-        "difference": difference,
+        "statement_balance": float(statement_bal),
+        "cleared_total": float(cleared_total),
+        "uncleared_total": float(uncleared_total),
+        "difference": float(difference),
         "transactions": [
             {
                 "id": t.id,

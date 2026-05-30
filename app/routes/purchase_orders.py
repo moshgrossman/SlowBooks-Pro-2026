@@ -191,6 +191,7 @@ def convert_to_bill(po_id: int, db: Session = Depends(get_db)):
     from app.models.accounts import Account
     from app.models.items import Item as ItemModel
     from app.services.accounting import create_journal_entry
+    from app.services.closing_date import check_closing_date
     from app.services.inventory_service import (
         get_inventory_asset_account_id,
         record_purchase,
@@ -199,6 +200,10 @@ def convert_to_bill(po_id: int, db: Session = Depends(get_db)):
     po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
     if not po:
         raise HTTPException(status_code=404, detail="Purchase order not found")
+    # Posts a JE dated to po.date; closing-date enforcement must cover this
+    # path too, otherwise an operator can reach into a closed period by
+    # converting an old PO without ever creating a bill directly.
+    check_closing_date(db, po.date)
     if po.status == POStatus.CLOSED:
         raise HTTPException(status_code=400, detail="PO already closed")
 

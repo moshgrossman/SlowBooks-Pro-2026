@@ -252,11 +252,16 @@ def estimate_print_preview(estimate_id: int, db: Session = Depends(get_db)):
 @router.post("/{estimate_id}/convert", response_model=InvoiceResponse)
 def convert_to_invoice(estimate_id: int, db: Session = Depends(get_db)):
     """CEstimate::ConvertToInvoice() @ 0x001944A0 — deep-copies all fields/lines"""
+    from app.services.closing_date import check_closing_date
+
     estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
     if estimate.status == EstimateStatus.CONVERTED:
         raise HTTPException(status_code=400, detail="Estimate already converted")
+    # Posts a JE dated to estimate.date; enforce closing date here too so an
+    # operator can't sidestep a closed period by converting an old estimate.
+    check_closing_date(db, estimate.date)
 
     # Get next invoice number
     from app.routes.invoices import _next_invoice_number

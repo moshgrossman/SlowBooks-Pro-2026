@@ -188,7 +188,14 @@ def create_payment(data: PaymentCreate, db: Session = Depends(get_db)):
 @router.post("/{payment_id}/void", response_model=PaymentResponse)
 def void_payment(payment_id: int, db: Session = Depends(get_db)):
     """Void a payment — reverses journal entry and restores invoice balances"""
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    # Row-lock the payment so two concurrent voids can't both pass the
+    # is_voided guard and post duplicate reversing JEs.
+    payment = (
+        db.query(Payment)
+        .filter(Payment.id == payment_id)
+        .with_for_update()
+        .first()
+    )
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
     if payment.is_voided:
@@ -227,9 +234,16 @@ def void_payment(payment_id: int, db: Session = Depends(get_db)):
                 source_id=payment.id,
             )
 
-    # Reverse invoice allocations
+    # Reverse invoice allocations. Lock each invoice row so a concurrent
+    # create_payment / second void can't race the read-modify-write of
+    # amount_paid and balance_due.
     for alloc in payment.allocations:
-        invoice = db.query(Invoice).filter(Invoice.id == alloc.invoice_id).first()
+        invoice = (
+            db.query(Invoice)
+            .filter(Invoice.id == alloc.invoice_id)
+            .with_for_update()
+            .first()
+        )
         if invoice:
             invoice.amount_paid -= alloc.amount
             invoice.balance_due += alloc.amount
