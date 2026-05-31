@@ -11,6 +11,7 @@ ever exposing the value. The PUT round-trips the placeholder as a no-op
 so editing any other setting doesn't accidentally overwrite the real
 credential with the literal "********".
 """
+
 from app.routes.settings import SECRET_KEYS, SECRET_PLACEHOLDER
 
 
@@ -26,9 +27,9 @@ def test_get_redacts_each_secret_key(client):
 
     got = client.get("/api/settings").json()
     for k in SECRET_KEYS:
-        assert got[k] == SECRET_PLACEHOLDER, (
-            f"settings[{k!r}] leaked plaintext: {got[k]!r}"
-        )
+        assert (
+            got[k] == SECRET_PLACEHOLDER
+        ), f"settings[{k!r}] leaked plaintext: {got[k]!r}"
 
 
 def test_get_reports_empty_for_unset_secrets(client):
@@ -47,7 +48,9 @@ def test_put_placeholder_does_not_overwrite_stored_secret(client, db_session):
     got = client.get("/api/settings").json()
     assert got["stripe_secret_key"] == SECRET_PLACEHOLDER
 
-    _set_settings(client, stripe_secret_key=SECRET_PLACEHOLDER, company_name="Edited Co")
+    _set_settings(
+        client, stripe_secret_key=SECRET_PLACEHOLDER, company_name="Edited Co"
+    )
 
     # Underlying value preserved
     from app.services.settings_service import get_all_settings

@@ -11,7 +11,6 @@ of its stored line amounts.
 from datetime import date
 from decimal import Decimal
 
-import pytest
 
 from app.models.recurring import RecurringInvoice, RecurringInvoiceLine
 from app.models.invoices import Invoice, InvoiceLine
@@ -70,9 +69,7 @@ def test_simple_recurring_invoice_balances(db_session, seed_accounts, seed_custo
     assert dr == cr == Decimal("100.00")
 
 
-def test_recurring_invoice_with_tax_balances(
-    db_session, seed_accounts, seed_customer
-):
+def test_recurring_invoice_with_tax_balances(db_session, seed_accounts, seed_customer):
     _make_recurring(
         db_session,
         seed_customer.id,
@@ -117,9 +114,7 @@ def test_subcent_line_amount_keeps_journal_balanced(
     db_session.expire_all()
     invoice = db_session.query(Invoice).filter_by(id=ids[0]).first()
 
-    line_amounts = (
-        db_session.query(InvoiceLine).filter_by(invoice_id=invoice.id).all()
-    )
+    line_amounts = db_session.query(InvoiceLine).filter_by(invoice_id=invoice.id).all()
     sum_of_stored_lines = sum(
         (Decimal(str(l.amount)) for l in line_amounts), Decimal("0")
     )
@@ -127,18 +122,16 @@ def test_subcent_line_amount_keeps_journal_balanced(
     # Stored subtotal must equal the sum of stored line amounts. Pre-fix this
     # fails: subtotal stores as 99.99 while line amounts each store as 50.00
     # (sum 100.00).
-    assert invoice.subtotal == sum_of_stored_lines, (
-        f"subtotal {invoice.subtotal} != sum of line amounts {sum_of_stored_lines}"
-    )
+    assert (
+        invoice.subtotal == sum_of_stored_lines
+    ), f"subtotal {invoice.subtotal} != sum of line amounts {sum_of_stored_lines}"
     assert invoice.total == invoice.balance_due
 
     dr, cr = _sum_debits_credits(db_session, invoice.transaction_id)
     assert dr == cr, f"Journal entry unbalanced: debits={dr} credits={cr}"
 
 
-def test_end_date_deactivates_recurring(
-    db_session, seed_accounts, seed_customer
-):
+def test_end_date_deactivates_recurring(db_session, seed_accounts, seed_customer):
     rec = _make_recurring(
         db_session,
         seed_customer.id,
@@ -157,9 +150,7 @@ def test_end_date_deactivates_recurring(
     assert rec.invoices_created == 1
 
 
-def test_next_due_advances_by_frequency(
-    db_session, seed_accounts, seed_customer
-):
+def test_next_due_advances_by_frequency(db_session, seed_accounts, seed_customer):
     rec = _make_recurring(
         db_session,
         seed_customer.id,

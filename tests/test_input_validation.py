@@ -8,8 +8,6 @@ Live-audit revealed several routes silently accepted bad data:
   - Duplicate vendor+bill_number -> duplicate AP rows
 These tests pin those each to a 4xx response with a useful detail.
 """
-from datetime import date
-from decimal import Decimal
 
 
 def _vendor(db_session, name="V"):
@@ -26,7 +24,9 @@ def _vendor(db_session, name="V"):
 # ---------------------------------------------------------------------------
 
 
-def test_invoice_create_rejects_empty_lines(client, db_session, seed_accounts, seed_customer):
+def test_invoice_create_rejects_empty_lines(
+    client, db_session, seed_accounts, seed_customer
+):
     r = client.post(
         "/api/invoices",
         json={
@@ -64,7 +64,9 @@ def test_po_create_rejects_empty_lines(client, db_session, seed_accounts):
     assert r.status_code == 422, r.text
 
 
-def test_estimate_create_rejects_empty_lines(client, db_session, seed_accounts, seed_customer):
+def test_estimate_create_rejects_empty_lines(
+    client, db_session, seed_accounts, seed_customer
+):
     r = client.post(
         "/api/estimates",
         json={
@@ -112,7 +114,9 @@ def test_bill_create_rejects_negative_quantity(client, db_session, seed_accounts
             "bill_number": "B-NEG",
             "date": "2026-05-01",
             "tax_rate": 0,
-            "lines": [{"description": "x", "quantity": -1, "rate": 50, "line_order": 0}],
+            "lines": [
+                {"description": "x", "quantity": -1, "rate": 50, "line_order": 0}
+            ],
         },
     )
     assert r.status_code == 422, r.text
@@ -129,7 +133,12 @@ def test_invoice_create_rejects_negative_rate(
             "terms": "Net 30",
             "tax_rate": 0,
             "lines": [
-                {"description": "discount?", "quantity": 1, "rate": -25, "line_order": 0}
+                {
+                    "description": "discount?",
+                    "quantity": 1,
+                    "rate": -25,
+                    "line_order": 0,
+                }
             ],
         },
     )
@@ -183,7 +192,9 @@ def test_payment_rejects_negative_allocation(
             "date": "2026-05-01",
             "terms": "Net 30",
             "tax_rate": 0,
-            "lines": [{"description": "x", "quantity": 1, "rate": 100, "line_order": 0}],
+            "lines": [
+                {"description": "x", "quantity": 1, "rate": 100, "line_order": 0}
+            ],
         },
     ).json()
 
@@ -235,16 +246,22 @@ def test_bill_same_number_different_vendors_is_allowed(
     r1 = client.post(
         "/api/bills",
         json={
-            "vendor_id": v1.id, "bill_number": "INV-1",
-            "date": "2026-05-01", "tax_rate": 0, "lines": [line],
+            "vendor_id": v1.id,
+            "bill_number": "INV-1",
+            "date": "2026-05-01",
+            "tax_rate": 0,
+            "lines": [line],
         },
     )
     assert r1.status_code == 201, r1.text
     r2 = client.post(
         "/api/bills",
         json={
-            "vendor_id": v2.id, "bill_number": "INV-1",
-            "date": "2026-05-01", "tax_rate": 0, "lines": [line],
+            "vendor_id": v2.id,
+            "bill_number": "INV-1",
+            "date": "2026-05-01",
+            "tax_rate": 0,
+            "lines": [line],
         },
     )
     assert r2.status_code == 201, r2.text
@@ -259,10 +276,14 @@ def _employee(client):
     r = client.post(
         "/api/employees",
         json={
-            "first_name": "Test", "last_name": "E",
-            "ssn": "123-45-6789", "filing_status": "single",
-            "pay_rate": 25, "pay_frequency": "biweekly",
-            "state": "WA", "date_of_hire": "2026-01-01",
+            "first_name": "Test",
+            "last_name": "E",
+            "ssn": "123-45-6789",
+            "filing_status": "single",
+            "pay_rate": 25,
+            "pay_frequency": "biweekly",
+            "state": "WA",
+            "date_of_hire": "2026-01-01",
         },
     )
     assert r.status_code == 201, r.text
@@ -274,8 +295,10 @@ def test_payroll_rejects_negative_hours(client, db_session):
     r = client.post(
         "/api/payroll",
         json={
-            "period_start": "2026-05-01", "period_end": "2026-05-14",
-            "pay_date": "2026-05-15", "run_type": "regular",
+            "period_start": "2026-05-01",
+            "period_end": "2026-05-14",
+            "pay_date": "2026-05-15",
+            "run_type": "regular",
             "stubs": [{"employee_id": emp_id, "hours": -40}],
         },
     )
@@ -287,8 +310,10 @@ def test_payroll_rejects_negative_overtime(client, db_session):
     r = client.post(
         "/api/payroll",
         json={
-            "period_start": "2026-05-01", "period_end": "2026-05-14",
-            "pay_date": "2026-05-15", "run_type": "regular",
+            "period_start": "2026-05-01",
+            "period_end": "2026-05-14",
+            "pay_date": "2026-05-15",
+            "run_type": "regular",
             "stubs": [{"employee_id": emp_id, "hours": 80, "overtime_hours": -10}],
         },
     )
@@ -300,8 +325,10 @@ def test_payroll_rejects_negative_gross_override(client, db_session):
     r = client.post(
         "/api/payroll",
         json={
-            "period_start": "2026-05-01", "period_end": "2026-05-14",
-            "pay_date": "2026-05-15", "run_type": "regular",
+            "period_start": "2026-05-01",
+            "period_end": "2026-05-14",
+            "pay_date": "2026-05-15",
+            "run_type": "regular",
             "stubs": [{"employee_id": emp_id, "hours": 0, "gross_override": -100}],
         },
     )
@@ -313,15 +340,21 @@ def test_payroll_rejects_negative_gross_override(client, db_session):
 # ---------------------------------------------------------------------------
 
 
-def test_list_invoices_clamps_negative_limit(client, db_session, seed_accounts, seed_customer):
+def test_list_invoices_clamps_negative_limit(
+    client, db_session, seed_accounts, seed_customer
+):
     # Seed a couple invoices so pagination has rows to return
     for _ in range(3):
         client.post(
             "/api/invoices",
             json={
-                "customer_id": seed_customer.id, "date": "2026-05-01",
-                "terms": "Net 30", "tax_rate": 0,
-                "lines": [{"description": "x", "quantity": 1, "rate": 10, "line_order": 0}],
+                "customer_id": seed_customer.id,
+                "date": "2026-05-01",
+                "terms": "Net 30",
+                "tax_rate": 0,
+                "lines": [
+                    {"description": "x", "quantity": 1, "rate": 10, "line_order": 0}
+                ],
             },
         )
 
@@ -337,12 +370,16 @@ def test_list_invoices_clamps_negative_limit(client, db_session, seed_accounts, 
     assert len(r.json()) == 3  # clamped offset to 0
 
 
-def test_list_invoices_clamps_huge_limit(client, db_session, seed_accounts, seed_customer):
+def test_list_invoices_clamps_huge_limit(
+    client, db_session, seed_accounts, seed_customer
+):
     client.post(
         "/api/invoices",
         json={
-            "customer_id": seed_customer.id, "date": "2026-05-01",
-            "terms": "Net 30", "tax_rate": 0,
+            "customer_id": seed_customer.id,
+            "date": "2026-05-01",
+            "terms": "Net 30",
+            "tax_rate": 0,
             "lines": [{"description": "x", "quantity": 1, "rate": 10, "line_order": 0}],
         },
     )

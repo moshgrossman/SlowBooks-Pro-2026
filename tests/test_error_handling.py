@@ -6,8 +6,6 @@ turn that into a 500. These give the operator no useful signal — the
 same status code as a server crash. Each test pins one of those to the
 correct 4xx with an actionable detail.
 """
-from datetime import date
-from decimal import Decimal
 
 
 def test_1099_pdf_unknown_vendor_returns_404(client, db_session, seed_accounts):

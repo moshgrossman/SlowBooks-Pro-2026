@@ -12,6 +12,7 @@ StaticPool, so we can't trigger a real concurrent race here. Instead we
 inject a deterministic collision by pre-creating an invoice with the
 number `_next_invoice_number` will compute first.
 """
+
 from datetime import date
 from decimal import Decimal
 

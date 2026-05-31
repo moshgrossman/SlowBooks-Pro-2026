@@ -92,9 +92,9 @@ def test_iif_import_subcent_amounts_quantize_to_match_subtotal(
 
     lines = db_session.query(InvoiceLine).filter_by(invoice_id=invoice.id).all()
     sum_lines = sum((Decimal(str(l.amount)) for l in lines), Decimal("0"))
-    assert invoice.subtotal == sum_lines, (
-        f"subtotal {invoice.subtotal} != sum(line.amount) {sum_lines}"
-    )
+    assert (
+        invoice.subtotal == sum_lines
+    ), f"subtotal {invoice.subtotal} != sum(line.amount) {sum_lines}"
 
     # JE balanced after persistence (stored cents on both sides match)
     if invoice.transaction_id:

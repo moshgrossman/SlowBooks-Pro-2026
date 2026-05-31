@@ -11,6 +11,7 @@ and asserts the total query count is bounded by a small constant rather
 than scaling with N. We use SQLAlchemy's `after_cursor_execute` event to
 count SELECTs — durable across SQLAlchemy versions and DB dialects.
 """
+
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
@@ -57,8 +58,11 @@ def _seed_invoices(db_session, customer_id, n):
         db_session.flush()
         db_session.add(
             InvoiceLine(
-                invoice_id=inv.id, description=f"L{i}",
-                quantity=Decimal("1"), rate=Decimal("100"), amount=Decimal("100"),
+                invoice_id=inv.id,
+                description=f"L{i}",
+                quantity=Decimal("1"),
+                rate=Decimal("100"),
+                amount=Decimal("100"),
                 line_order=0,
             )
         )
@@ -80,8 +84,7 @@ def test_list_invoices_query_count_constant(
     # auth/session/audit overhead. Cap at MAX_QUERIES so any future
     # regression linear in N_ROWS lights this up.
     assert len(stmts) < MAX_QUERIES + N_ROWS, (
-        f"got {len(stmts)} SELECTs for {N_ROWS} invoices "
-        f"(expected ~{MAX_QUERIES})"
+        f"got {len(stmts)} SELECTs for {N_ROWS} invoices " f"(expected ~{MAX_QUERIES})"
     )
 
 
@@ -103,17 +106,18 @@ def _seed_bills(db_session, vendor_id, n):
         db_session.flush()
         db_session.add(
             BillLine(
-                bill_id=b.id, description=f"L{i}",
-                quantity=Decimal("1"), rate=Decimal("100"), amount=Decimal("100"),
+                bill_id=b.id,
+                description=f"L{i}",
+                quantity=Decimal("1"),
+                rate=Decimal("100"),
+                amount=Decimal("100"),
                 line_order=0,
             )
         )
     db_session.commit()
 
 
-def test_list_bills_query_count_constant(
-    client, db_session, db_engine, seed_accounts
-):
+def test_list_bills_query_count_constant(client, db_session, db_engine, seed_accounts):
     from app.models.contacts import Vendor
 
     v = Vendor(name="V", is_active=True)
@@ -127,6 +131,6 @@ def test_list_bills_query_count_constant(
 
     assert r.status_code == 200, r.text
     assert len(r.json()) == N_ROWS
-    assert len(stmts) < MAX_QUERIES + N_ROWS, (
-        f"got {len(stmts)} SELECTs for {N_ROWS} bills"
-    )
+    assert (
+        len(stmts) < MAX_QUERIES + N_ROWS
+    ), f"got {len(stmts)} SELECTs for {N_ROWS} bills"

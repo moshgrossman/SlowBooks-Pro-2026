@@ -11,8 +11,6 @@ Each is a "convert an old document into a JE that lands in the closed
 period" loophole. These tests pin the guard so a regression that drops
 any check_closing_date call surfaces immediately.
 """
-from datetime import date
-from decimal import Decimal
 
 
 def _set_closing_date(client, iso: str):
@@ -32,8 +30,12 @@ def test_po_convert_to_bill_respects_closing_date(client, db_session, seed_accou
     r = client.post(
         "/api/purchase-orders",
         json={
-            "vendor_id": v.id, "date": "2025-06-15", "tax_rate": 0,
-            "lines": [{"description": "x", "quantity": 1, "rate": 100, "line_order": 0}],
+            "vendor_id": v.id,
+            "date": "2025-06-15",
+            "tax_rate": 0,
+            "lines": [
+                {"description": "x", "quantity": 1, "rate": 100, "line_order": 0}
+            ],
         },
     )
     assert r.status_code == 201, r.text
@@ -52,8 +54,12 @@ def test_estimate_convert_respects_closing_date(
     r = client.post(
         "/api/estimates",
         json={
-            "customer_id": seed_customer.id, "date": "2025-06-15", "tax_rate": 0,
-            "lines": [{"description": "x", "quantity": 1, "rate": 100, "line_order": 0}],
+            "customer_id": seed_customer.id,
+            "date": "2025-06-15",
+            "tax_rate": 0,
+            "lines": [
+                {"description": "x", "quantity": 1, "rate": 100, "line_order": 0}
+            ],
         },
     )
     assert r.status_code == 201, r.text
@@ -71,18 +77,24 @@ def test_payroll_process_respects_closing_date(client, db_session):
     emp = client.post(
         "/api/employees",
         json={
-            "first_name": "T", "last_name": "E",
-            "ssn": "111-11-1111", "filing_status": "single",
-            "pay_rate": 25, "pay_frequency": "biweekly",
-            "state": "WA", "date_of_hire": "2026-01-01",
+            "first_name": "T",
+            "last_name": "E",
+            "ssn": "111-11-1111",
+            "filing_status": "single",
+            "pay_rate": 25,
+            "pay_frequency": "biweekly",
+            "state": "WA",
+            "date_of_hire": "2026-01-01",
         },
     ).json()
 
     run = client.post(
         "/api/payroll",
         json={
-            "period_start": "2025-06-01", "period_end": "2025-06-14",
-            "pay_date": "2025-06-15", "run_type": "regular",
+            "period_start": "2025-06-01",
+            "period_end": "2025-06-14",
+            "pay_date": "2025-06-15",
+            "run_type": "regular",
             "stubs": [{"employee_id": emp["id"], "hours": 80}],
         },
     ).json()

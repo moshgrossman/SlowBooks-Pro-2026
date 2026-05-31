@@ -7,7 +7,6 @@ through accounting._q so each stored line amount matches both the subtotal
 helper (compute_line_totals) and the journal entries it produces.
 """
 
-from datetime import date
 from decimal import Decimal
 
 
@@ -36,9 +35,7 @@ def _debit_credit(db_session, txn_id):
 # ---------------------------------------------------------------------------
 
 
-def test_bill_subcent_lines_match_stored_subtotal(
-    client, db_session, seed_accounts
-):
+def test_bill_subcent_lines_match_stored_subtotal(client, db_session, seed_accounts):
     vendor = _vendor(db_session)
     body = {
         "vendor_id": vendor.id,
@@ -61,9 +58,9 @@ def test_bill_subcent_lines_match_stored_subtotal(
     lines = db_session.query(BillLine).filter_by(bill_id=bill_id).all()
 
     sum_lines = _sum_decimal(lines, "amount")
-    assert bill.subtotal == sum_lines, (
-        f"bill.subtotal {bill.subtotal} != sum(line.amount) {sum_lines}"
-    )
+    assert (
+        bill.subtotal == sum_lines
+    ), f"bill.subtotal {bill.subtotal} != sum(line.amount) {sum_lines}"
 
     if bill.transaction_id:
         dr, cr = _debit_credit(db_session, bill.transaction_id)
@@ -75,9 +72,7 @@ def test_bill_subcent_lines_match_stored_subtotal(
 # ---------------------------------------------------------------------------
 
 
-def test_po_subcent_lines_match_stored_subtotal(
-    client, db_session, seed_accounts
-):
+def test_po_subcent_lines_match_stored_subtotal(client, db_session, seed_accounts):
     vendor = _vendor(db_session)
     body = {
         "vendor_id": vendor.id,
@@ -96,19 +91,15 @@ def test_po_subcent_lines_match_stored_subtotal(
 
     db_session.expire_all()
     po = db_session.query(PurchaseOrder).filter_by(id=po_id).first()
-    lines = (
-        db_session.query(PurchaseOrderLine).filter_by(purchase_order_id=po_id).all()
-    )
+    lines = db_session.query(PurchaseOrderLine).filter_by(purchase_order_id=po_id).all()
 
     sum_lines = _sum_decimal(lines, "amount")
-    assert po.subtotal == sum_lines, (
-        f"po.subtotal {po.subtotal} != sum(line.amount) {sum_lines}"
-    )
+    assert (
+        po.subtotal == sum_lines
+    ), f"po.subtotal {po.subtotal} != sum(line.amount) {sum_lines}"
 
 
-def test_po_convert_to_bill_uses_rounded_amounts(
-    client, db_session, seed_accounts
-):
+def test_po_convert_to_bill_uses_rounded_amounts(client, db_session, seed_accounts):
     """PO→Bill must produce a balanced JE even with sub-cent line totals."""
     vendor = _vendor(db_session)
     po_body = {
@@ -166,9 +157,9 @@ def test_estimate_subcent_lines_match_stored_subtotal(
     lines = db_session.query(EstimateLine).filter_by(estimate_id=est_id).all()
 
     sum_lines = _sum_decimal(lines, "amount")
-    assert est.subtotal == sum_lines, (
-        f"estimate.subtotal {est.subtotal} != sum(line.amount) {sum_lines}"
-    )
+    assert (
+        est.subtotal == sum_lines
+    ), f"estimate.subtotal {est.subtotal} != sum(line.amount) {sum_lines}"
 
 
 def test_estimate_update_subcent_lines_match_stored_subtotal(
@@ -180,7 +171,9 @@ def test_estimate_update_subcent_lines_match_stored_subtotal(
             "customer_id": seed_customer.id,
             "date": "2026-04-01",
             "tax_rate": 0,
-            "lines": [{"description": "Old", "quantity": 1, "rate": 10, "line_order": 0}],
+            "lines": [
+                {"description": "Old", "quantity": 1, "rate": 10, "line_order": 0}
+            ],
         },
     )
     est_id = create.json()["id"]
@@ -189,8 +182,18 @@ def test_estimate_update_subcent_lines_match_stored_subtotal(
         f"/api/estimates/{est_id}",
         json={
             "lines": [
-                {"description": "Half A", "quantity": 1.5, "rate": 33.33, "line_order": 0},
-                {"description": "Half B", "quantity": 1.5, "rate": 33.33, "line_order": 1},
+                {
+                    "description": "Half A",
+                    "quantity": 1.5,
+                    "rate": 33.33,
+                    "line_order": 0,
+                },
+                {
+                    "description": "Half B",
+                    "quantity": 1.5,
+                    "rate": 33.33,
+                    "line_order": 1,
+                },
             ]
         },
     )
@@ -237,9 +240,9 @@ def test_invoice_subcent_lines_match_stored_subtotal(
     lines = db_session.query(InvoiceLine).filter_by(invoice_id=inv_id).all()
 
     sum_lines = _sum_decimal(lines, "amount")
-    assert inv.subtotal == sum_lines, (
-        f"invoice.subtotal {inv.subtotal} != sum(line.amount) {sum_lines}"
-    )
+    assert (
+        inv.subtotal == sum_lines
+    ), f"invoice.subtotal {inv.subtotal} != sum(line.amount) {sum_lines}"
 
     dr, cr = _debit_credit(db_session, inv.transaction_id)
     assert dr == cr
@@ -266,8 +269,18 @@ def test_invoice_update_subcent_lines_match_stored_subtotal(
         f"/api/invoices/{inv_id}",
         json={
             "lines": [
-                {"description": "Half A", "quantity": 1.5, "rate": 33.33, "line_order": 0},
-                {"description": "Half B", "quantity": 1.5, "rate": 33.33, "line_order": 1},
+                {
+                    "description": "Half A",
+                    "quantity": 1.5,
+                    "rate": 33.33,
+                    "line_order": 0,
+                },
+                {
+                    "description": "Half B",
+                    "quantity": 1.5,
+                    "rate": 33.33,
+                    "line_order": 1,
+                },
             ]
         },
     )

@@ -167,9 +167,15 @@ class AnalyticsEngine:
         """
         today = date.today()
         rows = (
-            self.db.query(Customer.name, Invoice.due_date, Invoice.date, Invoice.balance_due)
+            self.db.query(
+                Customer.name, Invoice.due_date, Invoice.date, Invoice.balance_due
+            )
             .join(Customer, Invoice.customer_id == Customer.id)
-            .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+            .filter(
+                Invoice.status.in_(
+                    [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+                )
+            )
             .filter(Invoice.balance_due > 0)
             .all()
         )
@@ -247,7 +253,11 @@ class AnalyticsEngine:
 
         ar_balance = (
             self.db.query(func.coalesce(func.sum(Invoice.balance_due), 0))
-            .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+            .filter(
+                Invoice.status.in_(
+                    [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+                )
+            )
             .scalar()
         ) or Decimal(0)
 
@@ -275,7 +285,11 @@ class AnalyticsEngine:
 
         ar_rows = (
             self.db.query(Invoice.due_date, Invoice.balance_due)
-            .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+            .filter(
+                Invoice.status.in_(
+                    [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+                )
+            )
             .filter(Invoice.due_date.isnot(None))
             .all()
         )

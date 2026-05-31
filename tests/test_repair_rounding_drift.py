@@ -5,6 +5,7 @@ disagreeing with sum of line amounts), then verify the script reports
 the drift and — with apply_repairs — corrects only the header columns,
 never the line amounts.
 """
+
 from datetime import date
 from decimal import Decimal
 
@@ -188,14 +189,18 @@ def test_journal_drift_reported_not_repaired(db_session, seed_accounts, seed_cus
     db_session.flush()
     db_session.add(
         TransactionLine(
-            transaction_id=txn.id, account_id=ar.id,
-            debit=Decimal("100.00"), credit=Decimal("0"),
+            transaction_id=txn.id,
+            account_id=ar.id,
+            debit=Decimal("100.00"),
+            credit=Decimal("0"),
         )
     )
     db_session.add(
         TransactionLine(
-            transaction_id=txn.id, account_id=income.id,
-            debit=Decimal("0"), credit=Decimal("99.99"),  # intentional 1c off
+            transaction_id=txn.id,
+            account_id=income.id,
+            debit=Decimal("0"),
+            credit=Decimal("99.99"),  # intentional 1c off
         )
     )
     inv.transaction_id = txn.id
@@ -212,9 +217,7 @@ def test_journal_drift_reported_not_repaired(db_session, seed_accounts, seed_cus
     apply_repairs(db_session, report)
     db_session.expire_all()
 
-    lines = (
-        db_session.query(TransactionLine).filter_by(transaction_id=txn.id).all()
-    )
+    lines = db_session.query(TransactionLine).filter_by(transaction_id=txn.id).all()
     debits = sum((Decimal(str(l.debit)) for l in lines), Decimal("0"))
     credits = sum((Decimal(str(l.credit)) for l in lines), Decimal("0"))
     assert debits == Decimal("100.00")
