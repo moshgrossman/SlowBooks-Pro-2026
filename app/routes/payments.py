@@ -191,10 +191,7 @@ def void_payment(payment_id: int, db: Session = Depends(get_db)):
     # Row-lock the payment so two concurrent voids can't both pass the
     # is_voided guard and post duplicate reversing JEs.
     payment = (
-        db.query(Payment)
-        .filter(Payment.id == payment_id)
-        .with_for_update()
-        .first()
+        db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
     )
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")

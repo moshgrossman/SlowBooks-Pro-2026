@@ -32,4 +32,3 @@ def validate_non_negative_line(quantity, rate) -> None:
         raise ValueError("quantity must be non-negative; use a credit memo for refunds")
     if r < 0:
         raise ValueError("rate must be non-negative; use a credit memo for refunds")
-

@@ -110,9 +110,7 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
                     description=rline.description,
                     quantity=rline.quantity,
                     rate=rline.rate,
-                    amount=_q(
-                        Decimal(str(rline.quantity)) * Decimal(str(rline.rate))
-                    ),
+                    amount=_q(Decimal(str(rline.quantity)) * Decimal(str(rline.rate))),
                     line_order=rline.line_order,
                 )
             )
@@ -130,9 +128,7 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
             for rline in rec.lines:
                 # Must round per-line BEFORE summing to match compute_line_totals;
                 # otherwise stored credits drift from the rounded A/R debit.
-                line_amt = _q(
-                    Decimal(str(rline.quantity)) * Decimal(str(rline.rate))
-                )
+                line_amt = _q(Decimal(str(rline.quantity)) * Decimal(str(rline.rate)))
                 if line_amt == 0:
                     continue
                 income_id = default_income_id

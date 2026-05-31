@@ -450,11 +450,7 @@ def reverse_sale(
 
 def current_valuation(db: Session) -> dict:
     """Return aggregate inventory valuation: total_value, item_count, low_stock_count."""
-    items = (
-        db.query(Item)
-        .filter(Item.track_inventory, Item.is_active)
-        .all()
-    )  # noqa
+    items = db.query(Item).filter(Item.track_inventory, Item.is_active).all()  # noqa
     total_value = Decimal("0")
     item_count = 0
     low_stock = 0

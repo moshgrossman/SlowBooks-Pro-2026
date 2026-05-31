@@ -26,9 +26,7 @@ def _base_url():
 
 
 def list_companies(db: Session) -> list[dict]:
-    companies = (
-        db.query(Company).filter(Company.is_active).order_by(Company.name).all()
-    )
+    companies = db.query(Company).filter(Company.is_active).order_by(Company.name).all()
     return [
         {
             "id": c.id,

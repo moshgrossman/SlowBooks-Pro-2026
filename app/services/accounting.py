@@ -35,7 +35,10 @@ def compute_line_totals(lines, tax_rate) -> tuple[Decimal, Decimal, Decimal]:
     """
     subtotal = _q(
         sum(
-            (_q(Decimal(str(l.quantity)) * Decimal(str(l.rate))) for l in lines),
+            (
+                _q(Decimal(str(line.quantity)) * Decimal(str(line.rate)))
+                for line in lines
+            ),
             Decimal("0"),
         )
     )
@@ -73,16 +76,16 @@ def create_journal_entry(
     Total debits must equal total credits.
     """
     # Validate individual lines before summing
-    for i, l in enumerate(lines):
-        debit = Decimal(str(l.get("debit", 0)))
-        credit = Decimal(str(l.get("credit", 0)))
+    for i, line in enumerate(lines):
+        debit = Decimal(str(line.get("debit", 0)))
+        credit = Decimal(str(line.get("credit", 0)))
         if debit < 0 or credit < 0:
             raise ValueError(f"Line {i+1}: debit and credit must be non-negative")
         if debit > 0 and credit > 0:
             raise ValueError(f"Line {i+1}: a line cannot have both debit and credit")
 
-    total_debit = sum(Decimal(str(l.get("debit", 0))) for l in lines)
-    total_credit = sum(Decimal(str(l.get("credit", 0))) for l in lines)
+    total_debit = sum(Decimal(str(line.get("debit", 0))) for line in lines)
+    total_credit = sum(Decimal(str(line.get("credit", 0))) for line in lines)
 
     if total_debit != total_credit:
         raise ValueError(

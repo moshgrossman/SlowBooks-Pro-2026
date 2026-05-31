@@ -19,14 +19,20 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 def get_dashboard(db: Session = Depends(get_db)):
     total_receivables = (
         db.query(func.coalesce(func.sum(Invoice.balance_due), 0))
-        .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+        .filter(
+            Invoice.status.in_(
+                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+            )
+        )
         .scalar()
     )
 
     overdue_count = (
         db.query(func.count(Invoice.id))
         .filter(
-            Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]),
+            Invoice.status.in_(
+                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+            ),
             Invoice.due_date < func.current_date(),
         )
         .scalar()
@@ -110,7 +116,11 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
     # AR Aging buckets
     invoices = (
         db.query(Invoice)
-        .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+        .filter(
+            Invoice.status.in_(
+                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+            )
+        )
         .filter(Invoice.balance_due > 0)
         .all()
     )

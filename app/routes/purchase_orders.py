@@ -120,9 +120,7 @@ def create_po(data: POCreate, db: Session = Depends(get_db)):
             description=line_data.description,
             quantity=line_data.quantity,
             rate=line_data.rate,
-            amount=_q(
-                Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate))
-            ),
+            amount=_q(Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate))),
             line_order=line_data.line_order or i,
         )
         db.add(line)
@@ -151,9 +149,7 @@ def update_po(po_id: int, data: POUpdate, db: Session = Depends(get_db)):
             PurchaseOrderLine.purchase_order_id == po_id
         ).delete()
         for i, line_data in enumerate(data.lines):
-            amt = _q(
-                Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate))
-            )
+            amt = _q(Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate)))
             db.add(
                 PurchaseOrderLine(
                     purchase_order_id=po_id,

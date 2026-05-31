@@ -101,14 +101,14 @@ def get_schedule_c_data(db: Session, start_date: date, end_date: date) -> dict:
     sorted_lines = sorted(lines.values(), key=lambda x: x["line"])
 
     gross_income = sum(
-        l["total"]
-        for l in sorted_lines
-        if "Line 1" in l["line"] or "Line 6" in l["line"]
+        ln["total"]
+        for ln in sorted_lines
+        if "Line 1" in ln["line"] or "Line 6" in ln["line"]
     )
     total_expenses = sum(
-        l["total"]
-        for l in sorted_lines
-        if "Line 1" not in l["line"] and "Line 6" not in l["line"]
+        ln["total"]
+        for ln in sorted_lines
+        if "Line 1" not in ln["line"] and "Line 6" not in ln["line"]
     )
     net_profit = gross_income - total_expenses
 

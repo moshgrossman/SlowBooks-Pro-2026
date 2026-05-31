@@ -17,7 +17,6 @@ Usage:
     python scripts/integration_test_frontend.py
 """
 
-import json
 import requests
 import subprocess
 import time
@@ -30,9 +29,9 @@ BASE_URL = "http://127.0.0.1:8000"
 
 def test_backend_endpoints():
     """Test all backend API endpoints used by Tier 1-3 pages."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("BACKEND API TESTS")
-    print("="*70)
+    print("=" * 70)
 
     session = requests.Session()
 
@@ -98,7 +97,7 @@ def test_backend_endpoints():
     }
     r = session.post(f"{BASE_URL}/api/time-entries", json=te_data)
     assert r.status_code in [200, 201], f"Time entry POST failed: {r.status_code}"
-    print(f"      ✓ Time entries GET and POST working")
+    print("      ✓ Time entries GET and POST working")
 
     # PTO (Tier 1)
     print("\n[5/8] PTO API (Tier 1)")
@@ -106,7 +105,7 @@ def test_backend_endpoints():
     assert r.status_code == 200, f"PTO policies GET failed: {r.status_code}"
     r = session.get(f"{BASE_URL}/api/pto/requests")
     assert r.status_code == 200, f"PTO requests GET failed: {r.status_code}"
-    print(f"      ✓ PTO GET endpoints working")
+    print("      ✓ PTO GET endpoints working")
 
     # Deductions (Tier 2)
     print("\n[6/8] Deductions API (Tier 2)")
@@ -114,7 +113,7 @@ def test_backend_endpoints():
     assert r.status_code == 200, f"Deduction types GET failed: {r.status_code}"
     r = session.get(f"{BASE_URL}/api/deductions/employee/{emp_id}")
     assert r.status_code == 200, f"Employee deductions GET failed: {r.status_code}"
-    print(f"      ✓ Deductions GET endpoints working")
+    print("      ✓ Deductions GET endpoints working")
 
     # Tax Forms (Tier 3)
     print("\n[7/8] Tax Forms API (Tier 3)")
@@ -122,7 +121,7 @@ def test_backend_endpoints():
     # Note: 404 is expected as tax form endpoints are not yet implemented in backend
     # Frontend is built and ready, just awaiting backend implementation
     if r.status_code == 404:
-        print(f"      ℹ Tax forms endpoints not yet implemented (as expected)")
+        print("      ℹ Tax forms endpoints not yet implemented (as expected)")
     elif r.status_code in [200, 201, 400]:
         print(f"      ✓ Tax forms endpoint available (status {r.status_code})")
     else:
@@ -135,7 +134,7 @@ def test_backend_endpoints():
     emp_full = r.json()
     assert emp_full.get("email") == "admin@test.local", "Email not in details"
     assert emp_full.get("address1") == "999 Test Lane", "Address not in details"
-    print(f"      ✓ Employee details include email, address, W-4 fields")
+    print("      ✓ Employee details include email, address, W-4 fields")
 
     # Portal token
     r = session.get(f"{BASE_URL}/api/employees/{emp_id}/portal-token")
@@ -143,23 +142,23 @@ def test_backend_endpoints():
     token_resp = r.json()
     token = token_resp.get("portal_token")
     assert token, f"No portal_token in response: {token_resp}"
-    print(f"      ✓ Portal token endpoint working")
+    print("      ✓ Portal token endpoint working")
 
     # YTD
     r = session.get(f"{BASE_URL}/api/employees/{emp_id}/ytd")
     assert r.status_code == 200, f"YTD failed: {r.status_code}"
-    print(f"      ✓ YTD endpoint working")
+    print("      ✓ YTD endpoint working")
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("✅ ALL BACKEND ENDPOINTS WORKING")
-    print("="*70)
+    print("=" * 70)
 
 
 def test_frontend_pages():
     """Test that frontend pages are accessible and have correct content."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("FRONTEND PAGE TESTS")
-    print("="*70)
+    print("=" * 70)
 
     session = requests.Session()
 
@@ -234,22 +233,22 @@ def test_frontend_pages():
     assert r.status_code == 200, "utils.js not found"
     print("      ✓ Utility scripts load")
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("✅ ALL FRONTEND PAGES WORKING")
-    print("="*70)
+    print("=" * 70)
 
 
 def main():
     """Run all tests."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TIER 1-3 ADMIN UI - FUNCTIONAL TEST SUITE")
-    print("="*70)
+    print("=" * 70)
 
     # Check if server is running
     try:
         r = requests.get(f"{BASE_URL}/health", timeout=2)
         assert r.status_code == 200
-    except:
+    except Exception:
         print("\n⚠ Server not running. Starting on port 8000...")
         os.environ["DATABASE_URL"] = "sqlite:///./test.db"
         # Clean up old DB
@@ -257,10 +256,19 @@ def main():
             os.remove("test.db")
         # Start server
         proc = subprocess.Popen(
-            ["python", "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+            [
+                "python",
+                "-m",
+                "uvicorn",
+                "app.main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000",
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            cwd="/home/user/SlowBooks-Pro-2026"
+            cwd="/home/user/SlowBooks-Pro-2026",
         )
         time.sleep(4)
         # Verify it started
@@ -268,7 +276,7 @@ def main():
             r = requests.get(f"{BASE_URL}/health", timeout=2)
             assert r.status_code == 200
             print("✓ Server started")
-        except:
+        except Exception:
             print("✗ Failed to start server")
             proc.terminate()
             sys.exit(1)
@@ -277,9 +285,9 @@ def main():
         test_backend_endpoints()
         test_frontend_pages()
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("🎉 ALL TESTS PASSED!")
-        print("="*70)
+        print("=" * 70)
         print("\nTo manually test the UI:")
         print(f"  1. Open browser to {BASE_URL}")
         print("  2. Login with password: test1234")
@@ -299,6 +307,7 @@ def main():
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

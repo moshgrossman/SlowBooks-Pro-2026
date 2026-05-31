@@ -14,12 +14,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.invoices import Invoice, InvoiceStatus
 from app.models.payments import Payment, PaymentAllocation
-
-
-class CheckoutSessionRequest(BaseModel):
-    payment_token: str
-
-
 from app.services.accounting import (
     create_journal_entry,
     get_ar_account_id,
@@ -30,6 +24,11 @@ from app.services.stripe_service import (
     create_checkout_session,
     verify_webhook_event,
 )
+
+
+class CheckoutSessionRequest(BaseModel):
+    payment_token: str
+
 
 router = APIRouter(prefix="/api/stripe", tags=["stripe"])
 
@@ -100,10 +99,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     # the second arrival serializes behind the first and sees the already-
     # recorded payment on its idempotency re-check.
     invoice = (
-        db.query(Invoice)
-        .filter(Invoice.id == invoice_id)
-        .with_for_update()
-        .first()
+        db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
     )
     if not invoice:
         return {"status": "invoice_not_found"}

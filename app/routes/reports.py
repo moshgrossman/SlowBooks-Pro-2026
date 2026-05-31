@@ -13,12 +13,24 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-
-logger = logging.getLogger(__name__)
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sqlfunc
+
+from app.database import get_db
+from app.models.accounts import Account, AccountType
+from app.models.transactions import Transaction, TransactionLine
+from app.models.invoices import Invoice, InvoiceStatus
+from app.models.payments import Payment
+from app.models.contacts import Customer, Vendor
+from app.services.pdf_service import (
+    generate_statement_pdf,
+    generate_collection_letter_pdf,
+)
+from app.services.settings_service import get_all_settings as get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class SalesTaxPaymentRequest(BaseModel):
@@ -34,18 +46,6 @@ class CollectionLetterRequest(BaseModel):
     customer_ids: Optional[list[int]] = None
     send_email: bool = False
 
-
-from app.database import get_db
-from app.models.accounts import Account, AccountType
-from app.models.transactions import Transaction, TransactionLine
-from app.models.invoices import Invoice, InvoiceStatus
-from app.models.payments import Payment
-from app.models.contacts import Customer, Vendor
-from app.services.pdf_service import (
-    generate_statement_pdf,
-    generate_collection_letter_pdf,
-)
-from app.services.settings_service import get_all_settings as get_settings
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -140,7 +140,7 @@ def balance_sheet(
     equity = _totals_by_account(db, AccountType.EQUITY, date_end=as_of_date)
 
     total_assets = sum(a["amount"] for a in assets)
-    total_liabilities = sum(l["amount"] for l in liabilities)
+    total_liabilities = sum(liab["amount"] for liab in liabilities)
     total_equity = sum(e["amount"] for e in equity)
 
     # Net income for all periods up to as_of_date flows into equity as retained
@@ -186,7 +186,11 @@ def ar_aging(as_of_date: date = Query(default=None), db: Session = Depends(get_d
 
     invoices = (
         db.query(Invoice)
-        .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+        .filter(
+            Invoice.status.in_(
+                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+            )
+        )
         .filter(Invoice.date <= as_of_date)
         .filter(Invoice.balance_due > 0)
         .all()
@@ -848,7 +852,11 @@ def batch_email_statements(db: Session = Depends(get_db)):
 
     overdue_invoices = (
         db.query(Invoice)
-        .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+        .filter(
+            Invoice.status.in_(
+                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+            )
+        )
         .filter(Invoice.balance_due > 0)
         .filter(Invoice.due_date < as_of_date)
         .all()
@@ -928,7 +936,11 @@ def collection_letters(data: CollectionLetterRequest, db: Session = Depends(get_
 
     q = (
         db.query(Invoice)
-        .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+        .filter(
+            Invoice.status.in_(
+                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+            )
+        )
         .filter(Invoice.balance_due > 0)
         .filter(Invoice.due_date <= today - timedelta(days=min_days))
     )

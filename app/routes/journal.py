@@ -51,8 +51,8 @@ def list_journal_entries(source_type: str = None, db: Session = Depends(get_db))
                 reference=txn.reference or "",
                 source_type=txn.source_type or "",
                 lines=lines_data,
-                total_debit=sum(l["debit"] for l in lines_data),
-                total_credit=sum(l["credit"] for l in lines_data),
+                total_debit=sum(line["debit"] for line in lines_data),
+                total_credit=sum(line["credit"] for line in lines_data),
             )
         )
     return results
@@ -85,8 +85,8 @@ def get_journal_entry(entry_id: int, db: Session = Depends(get_db)):
         reference=txn.reference or "",
         source_type=txn.source_type or "",
         lines=lines_data,
-        total_debit=sum(l["debit"] for l in lines_data),
-        total_credit=sum(l["credit"] for l in lines_data),
+        total_debit=sum(line["debit"] for line in lines_data),
+        total_credit=sum(line["credit"] for line in lines_data),
     )
 
 

@@ -55,7 +55,9 @@ def low_stock_items(db: Session = Depends(get_db)):
         .filter(Item.is_active == True)  # noqa
         .filter(
             sqla_or_(
-                sqla_and_(Item.reorder_point > 0, Item.quantity_on_hand <= Item.reorder_point),
+                sqla_and_(
+                    Item.reorder_point > 0, Item.quantity_on_hand <= Item.reorder_point
+                ),
                 Item.quantity_on_hand < 0,
             )
         )

@@ -8,9 +8,11 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Optional as _Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func as sqlfunc
 from sqlalchemy.exc import IntegrityError
@@ -21,15 +23,6 @@ from app.models.invoices import Invoice, InvoiceLine, InvoiceStatus
 from app.models.items import Item
 from app.models.contacts import Customer
 from app.schemas.invoices import InvoiceCreate, InvoiceUpdate, InvoiceResponse
-from pydantic import BaseModel
-from typing import Optional as _Optional
-
-
-class _EmailInvoiceRequest(BaseModel):
-    recipient: str
-    subject: _Optional[str] = None
-
-
 from app.services.pdf_service import generate_invoice_pdf
 from app.services.accounting import (
     create_journal_entry,
@@ -41,6 +34,12 @@ from app.services.accounting import (
 )
 from app.services.settings_service import get_all_settings as get_settings
 from app.services.closing_date import check_closing_date
+
+
+class _EmailInvoiceRequest(BaseModel):
+    recipient: str
+    subject: _Optional[str] = None
+
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -280,9 +279,7 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
             description=line_data.description,
             quantity=line_data.quantity,
             rate=line_data.rate,
-            amount=_q(
-                Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate))
-            ),
+            amount=_q(Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate))),
             class_name=line_data.class_name,
             line_order=line_data.line_order or i,
         )
@@ -757,7 +754,11 @@ def apply_late_fees(db: Session = Depends(get_db)):
 
     overdue = (
         db.query(Invoice)
-        .filter(Invoice.status.in_([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]))
+        .filter(
+            Invoice.status.in_(
+                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
+            )
+        )
         .filter(Invoice.balance_due > 0)
         .filter(Invoice.due_date <= today - timedelta(days=grace_days))
         .all()

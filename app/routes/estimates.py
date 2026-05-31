@@ -141,9 +141,7 @@ def create_estimate(data: EstimateCreate, db: Session = Depends(get_db)):
             description=line_data.description,
             quantity=line_data.quantity,
             rate=line_data.rate,
-            amount=_q(
-                Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate))
-            ),
+            amount=_q(Decimal(str(line_data.quantity)) * Decimal(str(line_data.rate))),
             class_name=line_data.class_name,
             line_order=line_data.line_order or i,
         )

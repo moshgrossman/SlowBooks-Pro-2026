@@ -18,8 +18,6 @@ from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
 from app.models.accounts import Account, AccountType
 from app.models.contacts import Customer, Vendor
 from app.models.items import Item, ItemType
@@ -32,6 +30,8 @@ from app.services.accounting import (
     get_ar_account_id,
     get_default_income_account_id,
 )
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # IIF Parser
@@ -799,8 +799,8 @@ def _import_invoice(db: Session, trns: dict, spls: list) -> Invoice:
                 unmatched_accounts.append(acct_name)
 
         # Only post if balanced
-        total_dr = sum(Decimal(str(l["debit"])) for l in journal_lines)
-        total_cr = sum(Decimal(str(l["credit"])) for l in journal_lines)
+        total_dr = sum(Decimal(str(line["debit"])) for line in journal_lines)
+        total_cr = sum(Decimal(str(line["credit"])) for line in journal_lines)
         if total_dr == total_cr and total_dr > 0:
             txn = create_journal_entry(
                 db,

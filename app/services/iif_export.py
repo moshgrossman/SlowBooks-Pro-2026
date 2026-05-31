@@ -180,10 +180,7 @@ def export_customers(db: Session) -> str:
     )
 
     customers = (
-        db.query(Customer)
-        .filter(Customer.is_active)
-        .order_by(Customer.name)
-        .all()
+        db.query(Customer).filter(Customer.is_active).order_by(Customer.name).all()
     )
 
     lines = header
@@ -254,9 +251,7 @@ def export_vendors(db: Session) -> str:
         ]
     )
 
-    vendors = (
-        db.query(Vendor).filter(Vendor.is_active).order_by(Vendor.name).all()
-    )
+    vendors = db.query(Vendor).filter(Vendor.is_active).order_by(Vendor.name).all()
 
     lines = header
     for v in vendors:

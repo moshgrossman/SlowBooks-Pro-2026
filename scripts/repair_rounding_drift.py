@@ -23,6 +23,7 @@ Journal-entry drift (sum(debit) != sum(credit) on a stored transaction) is
 REPORTED but never auto-rebuilt: that touches account balances and may
 straddle a closing-date boundary. Operator review required.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,7 +75,7 @@ class Report:
 
 
 def _sum_line_amounts(lines) -> Decimal:
-    return sum((Decimal(str(l.amount or 0)) for l in lines), Decimal("0"))
+    return sum((Decimal(str(line.amount or 0)) for line in lines), Decimal("0"))
 
 
 def _scan_entity(
@@ -146,9 +147,7 @@ def _scan_journal_drift(
 ):
     from app.models.transactions import TransactionLine
 
-    rows = (
-        db.query(model).filter(model.transaction_id.isnot(None)).all()
-    )
+    rows = db.query(model).filter(model.transaction_id.isnot(None)).all()
     for row in rows:
         lines = (
             db.query(TransactionLine)
@@ -157,8 +156,8 @@ def _scan_journal_drift(
         )
         if not lines:
             continue
-        dr = sum((Decimal(str(l.debit or 0)) for l in lines), Decimal("0"))
-        cr = sum((Decimal(str(l.credit or 0)) for l in lines), Decimal("0"))
+        dr = sum((Decimal(str(ln.debit or 0)) for ln in lines), Decimal("0"))
+        cr = sum((Decimal(str(ln.credit or 0)) for ln in lines), Decimal("0"))
         if dr != cr:
             report.journal_drift.append(
                 JEDrift(
@@ -180,33 +179,51 @@ def detect(db: Session) -> Report:
 
     report = Report()
     _scan_entity(
-        db, report,
-        entity_name="invoice", model=Invoice,
-        identifier_attr="invoice_number", has_balance_due=True,
+        db,
+        report,
+        entity_name="invoice",
+        model=Invoice,
+        identifier_attr="invoice_number",
+        has_balance_due=True,
     )
     _scan_entity(
-        db, report,
-        entity_name="bill", model=Bill,
-        identifier_attr="bill_number", has_balance_due=True,
+        db,
+        report,
+        entity_name="bill",
+        model=Bill,
+        identifier_attr="bill_number",
+        has_balance_due=True,
     )
     _scan_entity(
-        db, report,
-        entity_name="estimate", model=Estimate,
-        identifier_attr="estimate_number", has_balance_due=False,
+        db,
+        report,
+        entity_name="estimate",
+        model=Estimate,
+        identifier_attr="estimate_number",
+        has_balance_due=False,
     )
     _scan_entity(
-        db, report,
-        entity_name="purchase_order", model=PurchaseOrder,
-        identifier_attr="po_number", has_balance_due=False,
+        db,
+        report,
+        entity_name="purchase_order",
+        model=PurchaseOrder,
+        identifier_attr="po_number",
+        has_balance_due=False,
     )
 
     _scan_journal_drift(
-        db, report,
-        entity_name="invoice", model=Invoice, identifier_attr="invoice_number",
+        db,
+        report,
+        entity_name="invoice",
+        model=Invoice,
+        identifier_attr="invoice_number",
     )
     _scan_journal_drift(
-        db, report,
-        entity_name="bill", model=Bill, identifier_attr="bill_number",
+        db,
+        report,
+        entity_name="bill",
+        model=Bill,
+        identifier_attr="bill_number",
     )
     return report
 
@@ -258,7 +275,9 @@ def _format_text(report: Report) -> str:
             f"total {d.old_total}->{d.new_total}{bd}"
         )
     out.append("")
-    out.append(f"Journal-entry drift: {len(report.journal_drift)} row(s) (NOT auto-repaired)")
+    out.append(
+        f"Journal-entry drift: {len(report.journal_drift)} row(s) (NOT auto-repaired)"
+    )
     for j in report.journal_drift:
         out.append(
             f"  [{j.entity}#{j.id} {j.identifier}] "
@@ -270,11 +289,13 @@ def _format_text(report: Report) -> str:
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--apply", action="store_true",
+        "--apply",
+        action="store_true",
         help="Write corrected header totals. Without this flag, runs read-only.",
     )
     parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Emit JSON report instead of text.",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -285,28 +306,44 @@ def main(argv: Iterable[str] | None = None) -> int:
         if args.apply:
             updated = apply_repairs(db, report)
             if args.json:
-                print(json.dumps({
-                    "report": {
-                        "header_drift": [asdict(d) for d in report.header_drift],
-                        "journal_drift": [asdict(j) for j in report.journal_drift],
-                        "scanned": report.scanned,
-                    },
-                    "applied": updated,
-                }, indent=2))
+                print(
+                    json.dumps(
+                        {
+                            "report": {
+                                "header_drift": [
+                                    asdict(d) for d in report.header_drift
+                                ],
+                                "journal_drift": [
+                                    asdict(j) for j in report.journal_drift
+                                ],
+                                "scanned": report.scanned,
+                            },
+                            "applied": updated,
+                        },
+                        indent=2,
+                    )
+                )
             else:
                 print(_format_text(report))
                 print(f"\nApplied: updated {updated} row(s).")
         else:
             if args.json:
-                print(json.dumps({
-                    "header_drift": [asdict(d) for d in report.header_drift],
-                    "journal_drift": [asdict(j) for j in report.journal_drift],
-                    "scanned": report.scanned,
-                }, indent=2))
+                print(
+                    json.dumps(
+                        {
+                            "header_drift": [asdict(d) for d in report.header_drift],
+                            "journal_drift": [asdict(j) for j in report.journal_drift],
+                            "scanned": report.scanned,
+                        },
+                        indent=2,
+                    )
+                )
             else:
                 print(_format_text(report))
                 if report.header_drift or report.journal_drift:
-                    print("\nDry run — re-run with --apply to write header corrections.")
+                    print(
+                        "\nDry run — re-run with --apply to write header corrections."
+                    )
     finally:
         db.close()
     return 0
