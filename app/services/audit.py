@@ -172,12 +172,26 @@ def _after_flush(session, flush_context):
         session.add(entry)
 
 
+_HOOKED_FLAG = "_slowbooks_audit_hook_attached"
+
+
 def register_audit_hooks(session_factory):
     """Register the after_flush hook on the session factory.
 
     Idempotent: registering the same factory twice would otherwise attach
     the listener twice and write duplicate audit_log rows for every change.
-    No current caller double-registers, but the guard is free insurance
-    against a future one (e.g. a test that rebuilds the app)."""
-    if not event.contains(session_factory, "after_flush", _after_flush):
-        event.listen(session_factory, "after_flush", _after_flush)
+
+    Uses a sentinel attribute on the factory rather than `event.contains`.
+    Under the pytest test suite many short-lived sessionmakers are created
+    and GC'd in sequence; CPython's allocator readily reuses the freed id,
+    and SQLAlchemy's event registry can hold a stale entry against that
+    id from a prior (collected) factory. `event.contains` then returns a
+    false-positive True for the *new* factory, so `event.listen` is skipped
+    and the new factory ends up with no listener attached — every flush
+    bypasses the audit hook silently. The sentinel attribute lives on the
+    factory instance itself, so id-reuse cannot leak across instances.
+    """
+    if getattr(session_factory, _HOOKED_FLAG, False):
+        return
+    event.listen(session_factory, "after_flush", _after_flush)
+    setattr(session_factory, _HOOKED_FLAG, True)
