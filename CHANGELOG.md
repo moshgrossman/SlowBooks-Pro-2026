@@ -7,6 +7,110 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### Post-merge review fixes (PR #12 follow-up)
+
+A deep review pass after merging the payroll/HR contribution surfaced and
+fixed twelve issues plus a round of structural cleanups (commits `af65843`,
+`68eb844`).
+
+**Schema / migrations:**
+
+- Six `Employee` columns (`portal_token_last_used`, `portal_token_expires_at`,
+  `everify_status`, `everify_submitted_at`, `everify_closed_at`,
+  `everify_notes`) and four whole tables (`document_audits`, `login_attempts`,
+  `reseller_permits`, `portal_accesses`) existed only in the models — no
+  Alembic migration created them. Startup `create_all()` masked the missing
+  tables but never ALTERs the existing `employees` table, so employee
+  creation, portal access, and E-Verify updates crashed with
+  `UndefinedColumn` on any alembic-migrated PostgreSQL.
+  `migrations/versions/d0e1f2a3b4c5` adds the columns;
+  `migrations/versions/bc3c3c5fd0a6` adds the tables (existence-guarded so it
+  works on databases where `create_all` already made them). Verified with a
+  full model-vs-schema diff against a scratch Postgres — zero gaps remain.
+
+**Correctness:**
+
+- `app/services/iif_export.py` — payment export filtered with
+  `.filter(not Payment.is_voided)`, which Python evaluates to
+  `.filter(False)` at query-build time (`WHERE false`), so payment IIF
+  exports were always empty. Restored the column comparison.
+- `app/routes/invoices.py` — late fees were being applied to DRAFT (unsent)
+  invoices: drafts get a terms-derived `due_date` at creation, so they
+  qualified as overdue. Filter scoped back to SENT/PARTIAL. Fee rounding
+  switched from bare `.quantize()` (banker's rounding) to `_q`
+  (ROUND_HALF_UP) to match the rest of the ledger.
+- `app/routes/bills.py` — `void_bill` gained the payments-applied guard that
+  `void_invoice` already had: voiding a paid bill reversed the full A/P while
+  the bill payment's cash JE and allocations stayed on the books,
+  double-counting the outflow.
+- `app/services/nacha_export.py` — `_split_net_pay` silently dropped
+  unallocated net pay when an employee had only PERCENT/FIXED accounts and no
+  REMAINDER/FULL account, producing an ACH file that underpaid the employee
+  with no error. Now raises `ValueError` (the route maps it to 400).
+- `app/services/payroll_service.py` + `app/routes/payroll.py` — the
+  $1M/37% supplemental-withholding tier could never fire:
+  `supplemental_federal_tax()` implements it but the call site never passed
+  `ytd_supplemental`. YTD bonus-run wages are now threaded through
+  (`_ytd_supplemental` helper; flat and gross-up paths). Deduction/gross/net
+  rounding in the pay-run route unified on `_q` — bare `.quantize(CENT)`
+  rounded half-cents the opposite direction from the service.
+- `app/static/js/employees.js` + `app/schemas/payroll.py` — the pay-frequency
+  dropdown emitted `semimonthly` but the enum value is `semi_monthly`, so
+  semi-monthly employees 500'd at flush. JS fixed; `pay_frequency` /
+  `filing_status` now typed against the model enums so bad values 422 at the
+  edge. Dropped the stale pre-2020 W-4 `allowances` field from the form.
+- `app/routes/credit_memos.py` + `app/services/recurring_service.py` — the
+  MAX+1 numbering race fix invoices got (retry on `IntegrityError` against
+  the UNIQUE constraint) now also covers credit memos and the recurring
+  batch. The recurring path retries under a SAVEPOINT so one collision can't
+  abort the whole batch; a template that can't get a number is left for the
+  next run.
+- `app/services/accounting.py` — closing-date enforcement moved inside
+  `create_journal_entry()` so every entry point inherits it. Recurring runs,
+  IIF/QBO imports, and inventory hooks could previously post into closed
+  periods that the UI forbids. Route-level checks kept for earlier, clearer
+  errors; `bypass_closing_date` kwarg exists as an operator escape hatch but
+  nothing sets it.
+- `app/routes/portal.py` — the token-in-URL POST handlers (W-4 elections,
+  direct-deposit accounts, PTO requests) resolved the employee without
+  writing a `portal_accesses` audit row, while their cookie-based twins
+  logged everything. All portal mutations are now audited.
+- `app/routes/payroll.py` — the JSON tax-form endpoints (`/forms/w2|w3|940|941`)
+  hand-rolled box math that diverged from the PDF path — W-2 box 3 returned
+  raw gross with no Social Security wage-base cap. They now delegate to the
+  same `compute_w2/w3/940/941` services the PDFs use; the 941 also now counts
+  only PROCESSED stubs.
+
+**Hardening / cleanup:**
+
+- ABA check-digit validation (`validate_routing_number`, weights 3-7-1) for
+  direct-deposit routing numbers — used by the portal and the employees API;
+  previously both accepted any 9 digits, so a typo'd routing number wasn't
+  caught until the bank bounced the ACH file.
+- `_q`/`CENT` money rounding consolidated onto `app/services/accounting.py`
+  (was copy-pasted across ~17 service modules; one divergent copy in
+  `inventory_service.py` kept deliberately — it quantizes quantities/costs to
+  4 dp).
+- Portal token/cookie handler bodies deduped into shared `_save_profile` /
+  `_add_bank` / `_request_pto` helpers; `_client_ip` moved to
+  `app/services/request_utils.py` (was duplicated in `auth.py` and
+  `portal.py`).
+- N+1 query fixes: time-entries list + pay-period summary, PTO requests
+  list, pay-run deduction loading, and W-2/W-3 generation (one stub fetch
+  for the whole year, bucketed in memory, instead of 2+ queries per
+  employee).
+
+**Test coverage:**
+
+- `tests/test_closing_date_enforcement.py` — four new service-layer tests
+  including the recurring-service path.
+- `tests/test_no_nplus1_in_list_endpoints.py` — extended to time-entries and
+  PTO list endpoints.
+- Routing-number fixtures updated to ABA-valid values (`021000021`).
+- Full suite: 458 passed; black/ruff clean.
+
+---
+
 ### AP void — `POST /api/bill-payments/{id}/void`
 
 The customer-payment void (`POST /api/payments/{id}/void`) had no AP mirror.
