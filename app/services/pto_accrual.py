@@ -14,20 +14,14 @@
 # (1 hr per 40 hrs worked, carryover capped at 40 hrs) but verify current law.
 # ============================================================================
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
-CENT = Decimal("0.01")
+from app.services.accounting import _q
 
 # WA paid-sick-leave mandate: 1 hour accrued per 40 hours worked.
 WA_SICK_ACCRUAL_RATE: Decimal = Decimal("0.025")  # 1 / 40
 # WA caps the unused paid-sick balance carried into the new year at 40 hours.
 WA_SICK_CARRYOVER_CAP: Decimal = Decimal("40")
-
-
-def _q(value) -> Decimal:
-    if not isinstance(value, Decimal):
-        value = Decimal(str(value))
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def _non_negative(value) -> Decimal:

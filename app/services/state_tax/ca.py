@@ -11,11 +11,10 @@
 # for actual tax filing.
 # ============================================================================
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
+from app.services.accounting import _q
 from app.services.state_tax.base import StateEngine, StateTaxResult
-
-CENT = Decimal("0.01")
 
 # --- CA State Disability Insurance ------------------------------------------
 SDI_RATE = Decimal("0.011")  # 1.1% of gross, employee only, NO wage cap
@@ -54,10 +53,6 @@ _BRACKETS = {
         (Decimal("1448000"), Decimal("0.1353")),
     ],
 }
-
-
-def _q(value: Decimal) -> Decimal:
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def _tax_from_brackets(wage: Decimal, brackets) -> Decimal:

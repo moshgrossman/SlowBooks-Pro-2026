@@ -14,27 +14,19 @@
 # ============================================================================
 
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.contacts import Vendor
 from app.models.bills import BillPayment
+from app.services.accounting import _q
 from app.services.pdf_service import _jinja_env, _safe_url_fetcher
 from weasyprint import HTML
 
-CENT = Decimal("0.01")
-
 # IRS 1099-NEC reporting threshold for nonemployee compensation.
 NEC_THRESHOLD = Decimal("600.00")
-
-
-def _q(value) -> Decimal:
-    """Quantize a money value to 2 decimal places."""
-    if not isinstance(value, Decimal):
-        value = Decimal(str(value or 0))
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def _vendor_address(vendor: Vendor) -> str:

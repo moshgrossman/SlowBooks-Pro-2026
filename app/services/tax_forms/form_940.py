@@ -7,23 +7,15 @@
 # ============================================================================
 
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
 from sqlalchemy.orm import joinedload
 
 from app.models.payroll import PayRun, PayStub, PayRunStatus
+from app.services.accounting import _q
 from app.services.payroll_service import FUTA_WAGE_BASE
 from app.services.pdf_service import _jinja_env, _safe_url_fetcher
 from weasyprint import HTML
-
-CENT = Decimal("0.01")
-
-
-def _q(value) -> Decimal:
-    """Coerce to Decimal and quantize to cents."""
-    if not isinstance(value, Decimal):
-        value = Decimal(str(value or 0))
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def _year_stubs(db, year: int) -> list[PayStub]:

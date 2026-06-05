@@ -38,6 +38,7 @@ from app.schemas.payroll import (
     YTDResponse,
 )
 from app.services.encryption import encrypt
+from app.services.nacha_export import validate_routing_number
 from app.services.onboarding import seed_onboarding_tasks
 
 # Portal tokens get a 1-year hard expiry on top of the 90-day idle window
@@ -308,8 +309,10 @@ def add_bank_account(
 
     routing = (data.routing_number or "").strip()
     account = (data.account_number or "").strip()
-    if not routing.isdigit() or len(routing) != 9:
-        raise HTTPException(status_code=400, detail="Routing number must be 9 digits")
+    # ABA checksum, not just 9-digits — same validation the portal and the
+    # NACHA exporter use, so a typo'd routing number is caught at entry.
+    if not validate_routing_number(routing):
+        raise HTTPException(status_code=400, detail="Invalid routing number")
     if not account.isdigit():
         raise HTTPException(status_code=400, detail="Account number must be numeric")
 

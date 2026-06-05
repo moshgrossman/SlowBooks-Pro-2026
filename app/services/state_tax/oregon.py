@@ -13,11 +13,10 @@
 # for actual tax filing.
 # ============================================================================
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
+from app.services.accounting import _q
 from app.services.state_tax.base import StateEngine, StateTaxResult
-
-CENT = Decimal("0.01")
 
 # --- Oregon statewide transit tax -------------------------------------------
 TRANSIT_TAX_RATE = Decimal("0.001")  # 0.1% of gross, employee
@@ -44,10 +43,6 @@ _BRACKETS = {
         (Decimal("250000"), Decimal("0.099")),
     ],
 }
-
-
-def _q(value: Decimal) -> Decimal:
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def _tax_from_brackets(wage: Decimal, brackets) -> Decimal:

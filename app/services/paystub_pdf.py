@@ -12,12 +12,11 @@
 # ============================================================================
 
 import json
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
+from app.services.accounting import _q
 from app.services.pdf_service import _jinja_env, _safe_url_fetcher
 from weasyprint import HTML
-
-CENT = Decimal("0.01")
 
 # detail_json keys that are deductions (withheld from the employee). Anything
 # else in the blob is an employer-side or informational line we skip on the
@@ -49,13 +48,6 @@ _EMPLOYER_KEYS = {
 _ADDITION_KEYS = {
     "reimbursements": "Reimbursements (non-taxable)",
 }
-
-
-def _q(value) -> Decimal:
-    """Coerce to Decimal and quantize to cents."""
-    if not isinstance(value, Decimal):
-        value = Decimal(str(value or 0))
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def _humanize(key: str) -> str:

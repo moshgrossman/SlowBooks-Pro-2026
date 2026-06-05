@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models.payroll import Employee
@@ -39,7 +39,7 @@ def list_time_entries(
     status: str = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    q = db.query(TimeEntry)
+    q = db.query(TimeEntry).options(joinedload(TimeEntry.employee))
     if employee_id:
         q = q.filter(TimeEntry.employee_id == employee_id)
     if start:
@@ -173,6 +173,7 @@ def pay_period_summary(
 
     rows = (
         db.query(TimeEntry)
+        .options(joinedload(TimeEntry.employee))
         .filter(
             TimeEntry.status == TimeEntryStatus.APPROVED,
             TimeEntry.pay_run_id.is_(None),

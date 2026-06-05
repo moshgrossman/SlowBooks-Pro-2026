@@ -2,6 +2,8 @@ from datetime import date
 from typing import Optional
 from pydantic import BaseModel, model_validator
 
+from app.models.payroll import FilingStatus, PayFrequency
+
 
 # ---------------------------------------------------------------------------
 # Employees — 2020+ Form W-4 (no "allowances"), per-employee pay frequency
@@ -12,8 +14,10 @@ class EmployeeCreate(BaseModel):
     ssn_last_four: Optional[str] = None
     pay_type: str = "hourly"
     pay_rate: float = 0
-    pay_frequency: str = "biweekly"
-    filing_status: str = "single"
+    # Typed against the model enums so a bad value is a 422 at the edge
+    # instead of a LookupError at flush (an opaque 500).
+    pay_frequency: PayFrequency = PayFrequency.BIWEEKLY
+    filing_status: FilingStatus = FilingStatus.SINGLE
     # 2020+ Form W-4
     multiple_jobs: bool = False
     dependents_amount: float = 0
@@ -41,8 +45,8 @@ class EmployeeUpdate(BaseModel):
     ssn_last_four: Optional[str] = None
     pay_type: Optional[str] = None
     pay_rate: Optional[float] = None
-    pay_frequency: Optional[str] = None
-    filing_status: Optional[str] = None
+    pay_frequency: Optional[PayFrequency] = None
+    filing_status: Optional[FilingStatus] = None
     multiple_jobs: Optional[bool] = None
     dependents_amount: Optional[float] = None
     other_income_annual: Optional[float] = None

@@ -755,9 +755,9 @@ def apply_late_fees(db: Session = Depends(get_db)):
     overdue = (
         db.query(Invoice)
         .filter(
-            Invoice.status.in_(
-                [InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PARTIAL]
-            )
+            # DRAFT invoices are unsent — never charge late fees on an
+            # invoice the customer hasn't received.
+            Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.PARTIAL])
         )
         .filter(Invoice.balance_due > 0)
         .filter(Invoice.due_date <= today - timedelta(days=grace_days))
@@ -801,7 +801,7 @@ def apply_late_fees(db: Session = Depends(get_db)):
         if existing:
             continue
 
-        fee_amount = (inv.balance_due * rate).quantize(Decimal("0.01"))
+        fee_amount = _q(inv.balance_due * rate)
         if fee_amount <= 0:
             continue
 

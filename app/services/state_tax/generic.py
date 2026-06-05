@@ -11,9 +11,8 @@
 
 from decimal import Decimal, ROUND_HALF_UP
 
+from app.services.accounting import CENT
 from app.services.state_tax.base import StateEngine, StateTaxResult
-
-CENT = Decimal("0.01")
 
 
 class GenericStateEngine(StateEngine):

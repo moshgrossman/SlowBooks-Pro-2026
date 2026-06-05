@@ -8,6 +8,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func as sqlfunc
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.models.credit_memos import (
@@ -93,24 +94,41 @@ def create_credit_memo(data: CreditMemoCreate, db: Session = Depends(get_db)):
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    memo_number = _next_cm_number(db)
     subtotal, tax_amount, total = compute_line_totals(data.lines, data.tax_rate)
 
-    cm = CreditMemo(
-        memo_number=memo_number,
-        customer_id=data.customer_id,
-        date=data.date,
-        original_invoice_id=data.original_invoice_id,
-        subtotal=subtotal,
-        tax_rate=data.tax_rate,
-        tax_amount=tax_amount,
-        total=total,
-        balance_remaining=total,
-        notes=data.notes,
-        status=CreditMemoStatus.ISSUED,
-    )
-    db.add(cm)
-    db.flush()
+    cm = None
+    # Retry the number assignment a few times — _next_cm_number is just
+    # MAX+1 (no row-level lock), so two concurrent creates can both compute
+    # the same number and one will hit the credit_memos.memo_number UNIQUE
+    # constraint at flush (mirrors the invoice-number retry).
+    for _ in range(10):
+        cm = CreditMemo(
+            memo_number=_next_cm_number(db),
+            customer_id=data.customer_id,
+            date=data.date,
+            original_invoice_id=data.original_invoice_id,
+            subtotal=subtotal,
+            tax_rate=data.tax_rate,
+            tax_amount=tax_amount,
+            total=total,
+            balance_remaining=total,
+            notes=data.notes,
+            status=CreditMemoStatus.ISSUED,
+        )
+        db.add(cm)
+        try:
+            db.flush()
+            break
+        except IntegrityError as e:
+            if "memo_number" not in str(e.orig).lower():
+                raise
+            db.rollback()
+            cm = None
+    if cm is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not assign a credit memo number — please retry.",
+        )
 
     ar_id = get_ar_account_id(db)
     default_income_id = get_default_income_account_id(db)
@@ -167,13 +185,13 @@ def create_credit_memo(data: CreditMemoCreate, db: Session = Depends(get_db)):
                 "account_id": ar_id,
                 "debit": Decimal("0"),
                 "credit": total,
-                "description": f"Credit Memo {memo_number}",
+                "description": f"Credit Memo {cm.memo_number}",
             }
         )
         txn = create_journal_entry(
             db,
             data.date,
-            f"Credit Memo {memo_number} - {customer.name}",
+            f"Credit Memo {cm.memo_number} - {customer.name}",
             journal_lines,
             source_type="credit_memo",
             source_id=cm.id,

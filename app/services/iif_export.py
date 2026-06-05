@@ -475,7 +475,7 @@ def export_payments(db: Session, date_from: date = None, date_to: date = None) -
             joinedload(Payment.deposit_to_account),
             joinedload(Payment.allocations).joinedload(PaymentAllocation.invoice),
         )
-        .filter(not Payment.is_voided)
+        .filter(Payment.is_voided == False)  # noqa: E712
     )
 
     if date_from:

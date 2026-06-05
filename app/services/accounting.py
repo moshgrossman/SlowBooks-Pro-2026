@@ -19,10 +19,18 @@ CENT = Decimal("0.01")
 
 
 def _q(value) -> Decimal:
-    """Coerce to Decimal rounded to two places (half-up, matches PostgreSQL default)."""
+    """Coerce to Decimal rounded to two places (half-up, matches PostgreSQL default).
+
+    This is the single canonical money-quantize helper for the app. None/falsy
+    coerce to 0.00 so callers can quantize optional/nullable amounts directly.
+    """
     if not isinstance(value, Decimal):
-        value = Decimal(str(value))
+        value = Decimal(str(value or 0))
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+# Public alias — reads more clearly at call sites that prefer a descriptive name.
+quantize_cents = _q
 
 
 def compute_line_totals(lines, tax_rate) -> tuple[Decimal, Decimal, Decimal]:
@@ -68,13 +76,27 @@ def create_journal_entry(
     source_type: str = None,
     source_id: int = None,
     reference: str = None,
+    bypass_closing_date: bool = False,
 ) -> Transaction:
     """Create a balanced journal entry.
 
     lines: [{"account_id": int, "debit": Decimal, "credit": Decimal}, ...]
     Each line must have debit > 0 OR credit > 0, not both.
     Total debits must equal total credits.
+
+    Closing-date enforcement runs here so every JE-posting path inherits it
+    (recurring invoices, IIF/QBO imports, inventory hooks, and all route
+    handlers). Route handlers also call check_closing_date earlier for better
+    UX; the redundancy is intentional. `bypass_closing_date` is an escape
+    hatch for operators with no current caller — do not set it in app code.
     """
+    if not bypass_closing_date:
+        # Local import: closing_date imports the settings model, so importing
+        # it at module scope risks a circular import as the model layer grows.
+        from app.services.closing_date import check_closing_date
+
+        check_closing_date(db, txn_date)
+
     # Validate individual lines before summing
     for i, line in enumerate(lines):
         debit = Decimal(str(line.get("debit", 0)))

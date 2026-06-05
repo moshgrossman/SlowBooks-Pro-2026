@@ -12,11 +12,11 @@
 # relying on these for actual tax filing.
 # ============================================================================
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
+from app.services.accounting import _q
 from app.services.state_tax.base import StateEngine, StateTaxResult
 
-CENT = Decimal("0.01")
 WEEKS_PER_YEAR = Decimal("52")
 
 # --- NY State Disability Insurance ------------------------------------------
@@ -59,10 +59,6 @@ _BRACKETS = {
         (Decimal("25000000"), Decimal("0.109")),
     ],
 }
-
-
-def _q(value: Decimal) -> Decimal:
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def _tax_from_brackets(wage: Decimal, brackets) -> Decimal:

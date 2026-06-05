@@ -32,7 +32,7 @@ from app.models.deductions import (
 from app.models.accounts import Account
 from app.schemas.payroll import PayRunCreate, PayRunResponse
 from app.schemas.deductions import GrossUpRequest, GrossUpResponse
-from app.services.payroll_service import calculate_withholdings
+from app.services.payroll_service import _q, calculate_withholdings
 from app.services.accounting import create_journal_entry
 from app.services.document_audit import (
     audit_footer_context,
@@ -59,8 +59,6 @@ from app.services.state_tax.reciprocity import withholding_state
 from app import config
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
-
-CENT = Decimal("0.01")
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +103,23 @@ def employee_ytd(db: Session, employee_id: int, year: int, before: date = None) 
         totals["pretax_deductions"] += s.pretax_deductions or 0
         totals["net"] += s.net_pay or 0
     return totals
+
+
+def _ytd_supplemental(
+    db: Session, employee_id: int, year: int, before: date = None
+) -> Decimal:
+    """YTD supplemental wages — gross pay from BONUS-type runs this year.
+
+    Drives the $1M/37% supplemental withholding tier. Approximation: bonuses
+    paid as supplemental stubs inside a REGULAR run aren't distinguishable
+    after the fact (PayStub has no supplemental flag), so only BONUS runs
+    count — the path bonuses are actually processed through.
+    """
+    total = Decimal("0")
+    for s in _ytd_stubs(db, employee_id, year, before):
+        if s.pay_run and s.pay_run.run_type == PayRunType.BONUS:
+            total += s.gross_pay or 0
+    return total
 
 
 def _with_employee_names(run: PayRun) -> PayRunResponse:
@@ -153,6 +168,7 @@ def _employee_deductions(db: Session, employee_id: int, gross: Decimal) -> tuple
     pretax = pretax_fica = posttax = Decimal("0")
     rows = (
         db.query(EmployeeDeduction)
+        .options(joinedload(EmployeeDeduction.deduction_type))
         .filter(
             EmployeeDeduction.employee_id == employee_id,
             EmployeeDeduction.is_active,
@@ -167,7 +183,7 @@ def _employee_deductions(db: Session, employee_id: int, gross: Decimal) -> tuple
             amt = gross * Decimal(str(d.amount or 0)) / Decimal("100")
         else:
             amt = Decimal(str(d.amount or 0))
-        amt = amt.quantize(CENT)
+        amt = _q(amt)
         if dt.category == DeductionCategory.PRETAX:
             pretax += amt
             if dt.reduces_fica:
@@ -286,7 +302,7 @@ def create_pay_run(data: PayRunCreate, db: Session = Depends(get_db)):
                     reg = Decimal("0")
             gross = reg * rate + ot * rate * Decimal("1.5") + dt * rate * Decimal("2")
 
-        gross = gross.quantize(CENT)
+        gross = _q(gross)
         if gross < 0:
             gross = Decimal("0")
 
@@ -299,7 +315,7 @@ def create_pay_run(data: PayRunCreate, db: Session = Depends(get_db)):
         )
         pretax = ded_pretax + Decimal(str(stub_input.pretax_deductions or 0))
         posttax = ded_posttax + Decimal(str(stub_input.posttax_deductions or 0))
-        reimbursements = Decimal(str(stub_input.reimbursements or 0)).quantize(CENT)
+        reimbursements = _q(Decimal(str(stub_input.reimbursements or 0)))
 
         # Multi-state: per-stub work location, with reciprocity deciding which
         # state's income tax is actually withheld.
@@ -311,6 +327,11 @@ def create_pay_run(data: PayRunCreate, db: Session = Depends(get_db)):
             regular_wages = _last_regular_gross(db, emp.id, data.pay_date)
 
         ytd = employee_ytd(db, emp.id, year, before=data.pay_date)
+        ytd_suppl = (
+            _ytd_supplemental(db, emp.id, year, before=data.pay_date)
+            if stub_input.supplemental
+            else Decimal("0")
+        )
 
         result = calculate_withholdings(
             gross,
@@ -331,6 +352,7 @@ def create_pay_run(data: PayRunCreate, db: Session = Depends(get_db)):
             supplemental=bool(stub_input.supplemental),
             supplemental_method=stub_input.supplemental_method or "flat",
             regular_wages=regular_wages,
+            ytd_supplemental=ytd_suppl,
         )
 
         # Garnishments are applied to disposable earnings (gross less the
@@ -342,7 +364,7 @@ def create_pay_run(data: PayRunCreate, db: Session = Depends(get_db)):
         )
         garnish_total = total_garnished(garn_results)
 
-        net = (result["net"] - posttax - garnish_total + reimbursements).quantize(CENT)
+        net = _q(result["net"] - posttax - garnish_total + reimbursements)
 
         detail = {k: str(v) for k, v in result["detail"].items()}
         for gr in garn_results:
@@ -560,6 +582,9 @@ def gross_up_paycheck(data: GrossUpRequest, db: Session = Depends(get_db)):
 
     year = date.today().year
     ytd = employee_ytd(db, emp.id, year)
+    ytd_suppl = (
+        _ytd_supplemental(db, emp.id, year) if data.supplemental else Decimal("0")
+    )
     work_state = (emp.work_state or "WA").upper()
     wh_state = withholding_state(work_state, emp.residence_state)
 
@@ -578,6 +603,7 @@ def gross_up_paycheck(data: GrossUpRequest, db: Session = Depends(get_db)):
             withholding_state=wh_state,
             wc_class_code=emp.wc_class_code,
             supplemental=bool(data.supplemental),
+            ytd_supplemental=ytd_suppl,
         )["net"]
 
     target = Decimal(str(data.target_net))
@@ -688,26 +714,20 @@ def generate_w2_form(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    # Get YTD totals for the year
-    ytd = employee_ytd(db, emp_id, year)
-
-    # Build W-2 box data (simplified; production would use exact IRS mapping)
+    # Thin wrapper over the authoritative compute_w2 service (same one the
+    # /pdf endpoint uses). The service applies the Social Security wage-base
+    # cap to box 3 and reports box 4/box 6 as the actual taxes withheld; the
+    # JSON shape below maps its keys onto the legacy box_N field names.
+    data = compute_w2(db, year, emp_id)
     w2_data = {
-        "box_1": str(ytd["gross"]),  # Wages, tips, other compensation
-        "box_2": str(ytd["federal"]),  # Federal income tax withheld
-        # ytd["ss"]/["medicare"] are the actual taxes WITHHELD (sum of stub
-        # ss_tax/medicare_tax), not wages. box_3/box_5 are wages (≈ gross,
-        # simplified — SS wage cap not applied here); box_4/box_6 are the
-        # withheld taxes verbatim. (Previously box_4 was ss_tax*0.062 and
-        # box_6 was medicare_tax*1.45 — both nonsensical; box_6 filed 145×
-        # the real Medicare tax.) The PDF path in tax_forms/w2_w3.py was
-        # already correct; this fixes the legacy JSON endpoint to match.
-        "box_3": str(ytd["gross"]),  # Social security wages (simplified)
-        "box_4": str(ytd["ss"]),  # SS tax withheld (actual)
-        "box_5": str(ytd["gross"]),  # Medicare wages and tips
-        "box_6": str(ytd["medicare"]),  # Medicare tax withheld (actual)
-        "box_12a_code": "D",
-        "box_12a_amount": "0",  # Would be 401k, HSA, etc.
+        "box_1": str(data["box1_federal_wages"]),
+        "box_2": str(data["box2_federal_tax_withheld"]),
+        "box_3": str(data["box3_ss_wages"]),
+        "box_4": str(data["box4_ss_tax_withheld"]),
+        "box_5": str(data["box5_medicare_wages"]),
+        "box_6": str(data["box6_medicare_tax_withheld"]),
+        "box_16": str(data["box16_state_wages"]),
+        "box_17": str(data["box17_state_income_tax"]),
         "employee_ssn": (
             f"XXX-XX-{emp.ssn_last_four}" if emp.ssn_last_four else "XXX-XX-XXXX"
         ),
@@ -717,7 +737,6 @@ def generate_w2_form(
         "tax_year": str(year),
     }
 
-    # Simple JSON response for now; production would generate actual PDF via WeasyPrint
     return JSONResponse(content=w2_data, status_code=200)
 
 
@@ -730,35 +749,20 @@ def generate_w3_form(
 
     Returns a PDF file with aggregate W-2 data for all employees.
     """
-    # Aggregate all employee YTD totals for the year
-    employees = db.query(Employee).filter(Employee.is_active).all()
-
-    total_gross = Decimal("0")
-    total_federal = Decimal("0")
-    total_ss = Decimal("0")
-    total_medicare = Decimal("0")
-    w2_count = 0
-
-    for emp in employees:
-        ytd = employee_ytd(db, emp.id, year)
-        if ytd["gross"] > 0:
-            total_gross += ytd["gross"]
-            total_federal += ytd["federal"]
-            total_ss += ytd["ss"]
-            total_medicare += ytd["medicare"]
-            w2_count += 1
-
-    # Build W-3 box data
+    # Thin wrapper over compute_w3 — the same service the /pdf endpoint uses.
+    # It aggregates every W-2 for the year (each built with the SS wage-base
+    # cap applied) in a single pass.
+    data = compute_w3(db, year)
     w3_data = {
-        # total_ss/total_medicare are sums of actual withheld taxes (see W-2
-        # note above). Wages ≈ gross (simplified); taxes are verbatim.
-        "box_1": str(total_gross),  # Wages, tips, other compensation
-        "box_2": str(total_federal),  # Federal income tax withheld
-        "box_3": str(total_gross),  # Social security wages (simplified)
-        "box_4": str(total_ss),  # SS tax withheld (actual)
-        "box_5": str(total_gross),  # Medicare wages and tips
-        "box_6": str(total_medicare),  # Medicare tax withheld (actual)
-        "number_of_w2s": str(w2_count),
+        "box_1": str(data["box1_federal_wages"]),
+        "box_2": str(data["box2_federal_tax_withheld"]),
+        "box_3": str(data["box3_ss_wages"]),
+        "box_4": str(data["box4_ss_tax_withheld"]),
+        "box_5": str(data["box5_medicare_wages"]),
+        "box_6": str(data["box6_medicare_tax_withheld"]),
+        "box_16": str(data["box16_state_wages"]),
+        "box_17": str(data["box17_state_income_tax"]),
+        "number_of_w2s": str(data["num_w2"]),
         "employer_ein": config.EMPLOYER_EIN or "XX-XXXXXXX",
         "employer_name": config.COMPANY_NAME,
         "employer_address": config.COMPANY_ADDRESS or "",
@@ -777,23 +781,15 @@ def generate_form_940(
 
     Returns a PDF file with federal unemployment tax information.
     """
-    # Aggregate FUTA data for all employees
-    employees = db.query(Employee).filter(Employee.is_active).all()
-
-    total_wages_subject_to_futa = Decimal("0")
-    total_futa_tax = Decimal("0")
-
-    for emp in employees:
-        ytd = employee_ytd(db, emp.id, year)
-        # FUTA applies to first $7,000 per employee per year
-        wages_for_futa = min(ytd["gross"], Decimal("7000"))
-        total_wages_subject_to_futa += wages_for_futa
-        # Federal FUTA rate (0.6% after credits, 6% gross)
-        total_futa_tax += wages_for_futa * Decimal("0.006")
-
+    # Thin wrapper over compute_940 — the same service the /pdf endpoint uses.
+    # It applies the $7,000 per-employee FUTA wage base across the year's pay
+    # stubs in a single pass and reports the actual withheld FUTA tax.
+    data = compute_940(db, year)
     form_940_data = {
-        "box_1": str(total_wages_subject_to_futa),  # Wages subject to FUTA
-        "box_2": str(total_futa_tax),  # FUTA tax for the year
+        "box_1": str(data["futa_taxable_wages"]),  # Wages subject to FUTA
+        "box_2": str(data["total_futa_tax"]),  # FUTA tax for the year
+        "total_payments": str(data["total_payments"]),
+        "exempt_payments": str(data["exempt_payments"]),
         "employer_ein": config.EMPLOYER_EIN or "XX-XXXXXXX",
         "employer_name": config.COMPANY_NAME,
         "tax_year": str(year),
@@ -816,60 +812,21 @@ def generate_form_941(
     if quarter not in (1, 2, 3, 4):
         raise HTTPException(status_code=400, detail="quarter must be 1-4")
 
-    # Calculate date range for quarter
-    if quarter == 1:
-        start_date = date(year, 1, 1)
-        end_date = date(year, 3, 31)
-    elif quarter == 2:
-        start_date = date(year, 4, 1)
-        end_date = date(year, 6, 30)
-    elif quarter == 3:
-        start_date = date(year, 7, 1)
-        end_date = date(year, 9, 30)
-    else:  # quarter == 4
-        start_date = date(year, 10, 1)
-        end_date = date(year, 12, 31)
-
-    # Sum all pay stubs in the quarter
-    from app.models.payroll import PayStub
-
-    stubs = (
-        db.query(PayStub)
-        .join(PayRun)
-        .filter(
-            PayRun.pay_date >= start_date,
-            PayRun.pay_date <= end_date,
-        )
-        .all()
-    )
-
-    total_gross = Decimal("0")
-    total_federal_withholding = Decimal("0")
-    total_ss_wages = Decimal("0")
-    total_ss_tax = Decimal("0")
-    total_medicare_wages = Decimal("0")
-    total_medicare_tax = Decimal("0")
-    employee_count = len(set(s.employee_id for s in stubs))
-
-    for stub in stubs:
-        total_gross += stub.gross_pay
-        total_federal_withholding += stub.federal_tax
-        total_ss_wages += stub.gross_pay  # For Form 941 simplification
-        total_ss_tax += stub.ss_tax
-        total_medicare_wages += stub.gross_pay
-        total_medicare_tax += stub.medicare_tax
-
+    # Thin wrapper over compute_941 — the same service the /pdf endpoint uses.
+    # It aggregates the quarter's PROCESSED pay stubs (single pass) into wage,
+    # withholding and combined-FICA-tax totals.
+    data = compute_941(db, year, quarter)
     form_941_data = {
         "quarter": str(quarter),
         "year": str(year),
-        "box_1": str(total_gross),  # Total wages, tips, other compensation
-        "box_2": str(total_federal_withholding),  # Federal income tax withheld
-        "box_3": str(total_ss_wages),  # Social security wages
-        "box_4": str(total_ss_tax),  # Social security tax
-        "box_5": str(total_medicare_wages),  # Medicare wages and tips
-        "box_6": str(total_medicare_tax),  # Medicare tax withheld
-        "box_12": str(total_federal_withholding),  # Total tax deposits
-        "number_of_employees": str(employee_count),
+        "box_1": str(data["total_wages"]),  # Total wages, tips, other comp
+        "box_2": str(data["federal_income_tax_withheld"]),  # Federal income tax
+        "box_3": str(data["social_security_wages"]),  # Social security wages
+        "box_4": str(data["social_security_tax"]),  # Social security tax
+        "box_5": str(data["medicare_wages"]),  # Medicare wages and tips
+        "box_6": str(data["medicare_tax"]),  # Medicare tax
+        "box_12": str(data["total_tax_liability"]),  # Total tax after adjustments
+        "number_of_employees": str(data["num_employees"]),
         "employer_ein": config.EMPLOYER_EIN or "XX-XXXXXXX",
         "employer_name": config.COMPANY_NAME,
         "payment_status": "Not yet filed",

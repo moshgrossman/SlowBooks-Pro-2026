@@ -264,6 +264,18 @@ def void_bill(bill_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Bill not found")
     if bill.status == BillStatus.VOID:
         raise HTTPException(status_code=400, detail="Bill already voided")
+    # Voiding a bill with payments applied would reverse the full A/P
+    # while the bill payment's cash JE + allocations stay on the books —
+    # double-counting cash and reversing A/P twice. Require the payment(s)
+    # to be voided first so the ledger stays consistent (mirrors void_invoice).
+    if (bill.amount_paid or Decimal("0")) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot void a bill with payments applied. Void the "
+                "bill payment(s) first, then void the bill."
+            ),
+        )
     # Voids post a reversing entry dated to the bill — must respect the
     # closing date like invoice/payment/journal voids already do, or a bill
     # can be reversed into a locked period.

@@ -37,7 +37,7 @@ const EmployeesPage = {
     async showForm(id = null) {
         let emp = {
             first_name: '', last_name: '', pay_type: 'hourly', pay_rate: 0,
-            filing_status: 'single', allowances: 0, hire_date: todayISO(),
+            filing_status: 'single', hire_date: todayISO(),
             email: '', pay_frequency: 'biweekly', work_state: '', residence_state: '',
             role: 'employee', manager_id: '',
             multiple_jobs: false, dependents_amount: 0, other_income_annual: 0,
@@ -69,7 +69,7 @@ const EmployeesPage = {
                         <select name="pay_frequency">
                             <option value="biweekly" ${(emp.pay_frequency||'biweekly')==='biweekly'?'selected':''}>Bi-Weekly</option>
                             <option value="weekly" ${emp.pay_frequency==='weekly'?'selected':''}>Weekly</option>
-                            <option value="semimonthly" ${emp.pay_frequency==='semimonthly'?'selected':''}>Semi-Monthly</option>
+                            <option value="semi_monthly" ${emp.pay_frequency==='semi_monthly'?'selected':''}>Semi-Monthly</option>
                             <option value="monthly" ${emp.pay_frequency==='monthly'?'selected':''}>Monthly</option>
                         </select></div>
                     <div class="form-group"><label>Filing Status</label>
@@ -78,8 +78,6 @@ const EmployeesPage = {
                             <option value="married" ${emp.filing_status==='married'?'selected':''}>Married</option>
                             <option value="head_of_household" ${emp.filing_status==='head_of_household'?'selected':''}>Head of Household</option>
                         </select></div>
-                    <div class="form-group"><label>Allowances</label>
-                        <input name="allowances" type="number" value="${emp.allowances || 0}"></div>
                     <div class="form-group"><label>Hire Date</label>
                         <input name="hire_date" type="date" value="${emp.hire_date || ''}"></div>
                     <div class="form-group"><label>Work State</label>
@@ -143,7 +141,6 @@ const EmployeesPage = {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(e.target).entries());
         data.pay_rate = parseFloat(data.pay_rate) || 0;
-        data.allowances = parseInt(data.allowances) || 0;
         data.dependents_amount = parseFloat(data.dependents_amount) || 0;
         data.other_income_annual = parseFloat(data.other_income_annual) || 0;
         data.deductions_annual = parseFloat(data.deductions_annual) || 0;
@@ -175,7 +172,6 @@ const EmployeesPage = {
                     <dt>Pay Rate</dt><dd>${formatCurrency(emp.pay_rate)}${emp.pay_type==='hourly'?'/hr':'/yr'}</dd>
                     <dt>Pay Frequency</dt><dd>${emp.pay_frequency || '—'}</dd>
                     <dt>Filing Status</dt><dd>${emp.filing_status}</dd>
-                    <dt>Allowances</dt><dd>${emp.allowances ?? '—'}</dd>
                     <dt>Hire Date</dt><dd>${formatDate(emp.hire_date)}</dd>
                     <dt>Work State</dt><dd>${escapeHtml(emp.work_state || '—')}</dd>
                     <dt>Residence State</dt><dd>${escapeHtml(emp.residence_state || '—')}</dd>

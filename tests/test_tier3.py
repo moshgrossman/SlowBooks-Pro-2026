@@ -870,7 +870,7 @@ def test_portal_bank_account_encryption(client: any, db_session: Session):
         data={
             "nickname": "Primary Checking",
             "account_kind": "checking",
-            "routing_number": "123456789",
+            "routing_number": "021000021",
             "account_number": "9876543210",
             "deposit_type": "full",
         },
@@ -1040,7 +1040,7 @@ def test_tier3_complete_workflow(client: any, db_session: Session, seed_accounts
         f"/portal/{token}/bank",
         data={
             "account_kind": "checking",
-            "routing_number": "987654321",
+            "routing_number": "021000021",
             "account_number": "1234567890",
             "deposit_type": "full",
         },

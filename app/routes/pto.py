@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models.payroll import Employee
@@ -165,7 +165,7 @@ def list_requests(
     status: str = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    q = db.query(PTORequest)
+    q = db.query(PTORequest).options(joinedload(PTORequest.employee))
     if employee_id:
         q = q.filter(PTORequest.employee_id == employee_id)
     if status:

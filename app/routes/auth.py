@@ -25,24 +25,10 @@ from app.services.auth import (
     set_password,
 )
 from app.services.rate_limit import limiter
+from app.services.request_utils import client_ip as _client_ip
 from app.services.settings_service import set_setting
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-
-def _client_ip(request: Request) -> str:
-    """Best-effort client IP. Honors X-Forwarded-For ONLY when the deployment
-    declares it runs behind a trusted proxy (TRUST_PROXY_HEADERS) — otherwise
-    XFF is client-spoofable and would let an attacker forge the audited IP.
-    Direct deploys fall back to the socket peer."""
-    from app.config import TRUST_PROXY_HEADERS
-
-    fwd = request.headers.get("x-forwarded-for", "") if TRUST_PROXY_HEADERS else ""
-    if fwd:
-        # Take the first hop — that's the client (proxies append to the right).
-        return fwd.split(",")[0].strip()[:45]
-    client = request.client
-    return (client.host if client else "")[:45]
 
 
 def _record_login_attempt(db: Session, request: Request, success: bool) -> None:

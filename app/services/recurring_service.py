@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sqlfunc
+from sqlalchemy.exc import IntegrityError
 
 from app.models.recurring import RecurringInvoice
 from app.models.invoices import Invoice, InvoiceLine
@@ -68,8 +69,6 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
             rec.is_active = False
             continue
 
-        invoice_number = _next_invoice_number(db)
-
         # Compute totals via the shared helper: each line is rounded to 2dp
         # before summing so the stored subtotal matches the sum of stored
         # line amounts, and journal credits land on the same cents as the
@@ -86,21 +85,41 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
             except ValueError:
                 pass
 
-        invoice = Invoice(
-            invoice_number=invoice_number,
-            customer_id=rec.customer_id,
-            date=rec.next_due,
-            due_date=due_date,
-            terms=rec.terms,
-            subtotal=subtotal,
-            tax_rate=tax_rate,
-            tax_amount=tax_amount,
-            total=total,
-            balance_due=total,
-            notes=rec.notes,
-        )
-        db.add(invoice)
-        db.flush()
+        # MAX+1 numbering races against concurrent manual creates (same as
+        # the invoices route). Retry under a SAVEPOINT so a collision rolls
+        # back only this attempt — not the other invoices already generated
+        # in this batch — and a template that can't get a number is simply
+        # left for the next run instead of aborting the whole batch.
+        invoice = None
+        invoice_number = None
+        for _ in range(10):
+            invoice_number = _next_invoice_number(db)
+            candidate = Invoice(
+                invoice_number=invoice_number,
+                customer_id=rec.customer_id,
+                date=rec.next_due,
+                due_date=due_date,
+                terms=rec.terms,
+                subtotal=subtotal,
+                tax_rate=tax_rate,
+                tax_amount=tax_amount,
+                total=total,
+                balance_due=total,
+                notes=rec.notes,
+            )
+            nested = db.begin_nested()
+            db.add(candidate)
+            try:
+                db.flush()
+                nested.commit()
+                invoice = candidate
+                break
+            except IntegrityError as e:
+                nested.rollback()
+                if "invoice_number" not in str(e.orig).lower():
+                    raise
+        if invoice is None:
+            continue
 
         for rline in rec.lines:
             db.add(
