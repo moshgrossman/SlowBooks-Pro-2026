@@ -652,4 +652,10 @@ const App = {
     },
 };
 
+// Top-level `const` creates a global *lexical* binding, not a window
+// property — but bootstrap.js guards its listeners with `window.App && ...`
+// (theme toggle, About, search, data-nav). Without this export every one of
+// those guards short-circuits and the static-shell buttons silently no-op.
+window.App = App;
+
 document.addEventListener('DOMContentLoaded', () => App.init());
