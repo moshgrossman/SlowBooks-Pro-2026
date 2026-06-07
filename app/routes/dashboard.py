@@ -7,10 +7,12 @@ from sqlalchemy import func
 from decimal import Decimal
 
 from app.database import get_db
+from app.models.accounts import Account, AccountType
 from app.models.invoices import Invoice, InvoiceStatus
 from app.models.payments import Payment
 from app.models.contacts import Customer
 from app.models.banking import BankAccount
+from app.models.transactions import Transaction, TransactionLine
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -141,7 +143,11 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
         else:
             aging_90 += inv.balance_due
 
-    # Monthly revenue — last 12 months
+    # Monthly revenue — last 12 months, read from the general ledger so
+    # paychecks, journal-entered consulting income, etc. all show up
+    # alongside customer invoices. (Previously summed Invoice.total only,
+    # which made non-invoice income invisible — the ledger is the source
+    # of truth.)
     monthly_revenue = []
     for i in range(11, -1, -1):
         year = today.year
@@ -154,12 +160,12 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
         end = date(year, month, last_day)
 
         total = (
-            db.query(func.coalesce(func.sum(Invoice.total), 0))
-            .filter(
-                Invoice.date >= start,
-                Invoice.date <= end,
-                Invoice.status != InvoiceStatus.VOID,
-            )
+            db.query(func.coalesce(func.sum(TransactionLine.credit), 0))
+            .join(Transaction, TransactionLine.transaction_id == Transaction.id)
+            .join(Account, Account.id == TransactionLine.account_id)
+            .filter(Transaction.date >= start)
+            .filter(Transaction.date <= end)
+            .filter(Account.account_type == AccountType.INCOME)
             .scalar()
         )
 
