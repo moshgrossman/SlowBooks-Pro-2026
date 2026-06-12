@@ -8,12 +8,12 @@ from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func as sqlfunc
 from sqlalchemy.exc import IntegrityError
 
 from app.models.recurring import RecurringInvoice
 from app.models.invoices import Invoice, InvoiceLine
 from app.models.items import Item
+from app.services.numbering import next_invoice_number
 from app.services.accounting import (
     _q,
     compute_line_totals,
@@ -22,13 +22,6 @@ from app.services.accounting import (
     get_default_income_account_id,
     get_sales_tax_account_id,
 )
-
-
-def _next_invoice_number(db: Session) -> str:
-    last = db.query(sqlfunc.max(Invoice.invoice_number)).scalar()
-    if last and last.isdigit():
-        return str(int(last) + 1).zfill(len(last))
-    return "1001"
 
 
 def _advance_next_due(current: date, frequency: str) -> date:
@@ -93,7 +86,7 @@ def generate_due_invoices(db: Session, as_of: date = None) -> list[int]:
         invoice = None
         invoice_number = None
         for _ in range(10):
-            invoice_number = _next_invoice_number(db)
+            invoice_number = next_invoice_number(db)
             candidate = Invoice(
                 invoice_number=invoice_number,
                 customer_id=rec.customer_id,

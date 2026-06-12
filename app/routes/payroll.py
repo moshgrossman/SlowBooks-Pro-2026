@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.payroll import (
     PayRun,
     PayStub,
@@ -132,8 +133,7 @@ def _with_employee_names(run: PayRun) -> PayRunResponse:
 
 @router.get("", response_model=list[PayRunResponse])
 def list_pay_runs(skip: int = 0, limit: int = 200, db: Session = Depends(get_db)):
-    limit = max(1, min(limit, 500))
-    skip = max(0, skip)
+    skip, limit = clamp_pagination(skip, limit, max_limit=500)
     runs = (
         db.query(PayRun)
         .options(joinedload(PayRun.stubs).joinedload(PayStub.employee))

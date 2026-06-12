@@ -13,15 +13,10 @@ from app.models.bills import Bill, BillStatus, BillPayment, BillPaymentAllocatio
 from app.models.contacts import Vendor
 from app.models.accounts import Account
 from app.schemas.bills import BillPaymentCreate, BillPaymentResponse
-from app.services.accounting import create_journal_entry
+from app.services.accounting import create_journal_entry, get_ap_account_id
 from app.services.closing_date import check_closing_date
 
 router = APIRouter(prefix="/api/bill-payments", tags=["bill_payments"])
-
-
-def _get_ap_account_id(db):
-    acct = db.query(Account).filter(Account.account_number == "2000").first()
-    return acct.id if acct else None
 
 
 @router.get("", response_model=list[BillPaymentResponse])
@@ -90,7 +85,7 @@ def create_bill_payment(data: BillPaymentCreate, db: Session = Depends(get_db)):
             bill.status = BillStatus.PARTIAL
 
     # Journal: DR AP, CR Bank
-    ap_id = _get_ap_account_id(db)
+    ap_id = get_ap_account_id(db)
     bank_id = data.pay_from_account_id
     if not bank_id:
         # Default to first checking account

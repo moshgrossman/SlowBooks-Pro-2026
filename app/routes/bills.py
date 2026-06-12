@@ -10,20 +10,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.bills import Bill, BillLine, BillStatus
 from app.models.contacts import Vendor
 from app.models.items import Item
 from app.models.accounts import Account
 from app.schemas.bills import BillCreate, BillResponse
-from app.services.accounting import _q, create_journal_entry, compute_line_totals
+from app.services.accounting import (
+    _q,
+    create_journal_entry,
+    compute_line_totals,
+    get_ap_account_id,
+)
 from app.services.closing_date import check_closing_date
 
 router = APIRouter(prefix="/api/bills", tags=["bills"])
-
-
-def _get_ap_account_id(db):
-    acct = db.query(Account).filter(Account.account_number == "2000").first()
-    return acct.id if acct else None
 
 
 @router.get("", response_model=list[BillResponse])
@@ -34,8 +35,7 @@ def list_bills(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = max(1, min(limit, 1000))
-    skip = max(0, skip)
+    skip, limit = clamp_pagination(skip, limit)
     # Eager-load vendor + lines so a 500-row list doesn't fire 1001
     # follow-up SELECTs through BillResponse.model_validate.
     q = db.query(Bill).options(
@@ -215,7 +215,7 @@ def create_bill(data: BillCreate, db: Session = Depends(get_db)):
             )
 
     # Credit AP
-    ap_id = _get_ap_account_id(db)
+    ap_id = get_ap_account_id(db)
     if ap_id and journal_lines:
         journal_lines.append(
             {

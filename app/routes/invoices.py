@@ -14,10 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import func as sqlfunc
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.accounts import Account
 from app.models.invoices import Invoice, InvoiceLine, InvoiceStatus
 from app.models.items import Item
@@ -32,6 +32,7 @@ from app.services.accounting import (
     compute_line_totals,
     _q,
 )
+from app.services.numbering import next_invoice_number
 from app.services.settings_service import get_all_settings as get_settings
 from app.services.closing_date import check_closing_date
 
@@ -63,14 +64,6 @@ def _due_date_from_terms(base_date: date, terms: str | None) -> date:
         return base_date + timedelta(days=days)
     except ValueError:
         return base_date + timedelta(days=30)
-
-
-def _next_invoice_number(db: Session) -> str:
-    """Reconstructed from CInvoice::GetNextRefNumber() @ 0x0015C9F0"""
-    last = db.query(sqlfunc.max(Invoice.invoice_number)).scalar()
-    if last and last.isdigit():
-        return str(int(last) + 1).zfill(len(last))
-    return "1001"
 
 
 def _compute_totals(lines_data, tax_rate):
@@ -167,8 +160,7 @@ def list_invoices(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = max(1, min(limit, 1000))
-    skip = max(0, skip)
+    skip, limit = clamp_pagination(skip, limit)
     # Eager-load customer (used for customer_name) and lines (in the
     # response model). Without these, returning 500 invoices triggered
     # 1001 extra queries — one per .customer access and one per .lines
@@ -234,12 +226,12 @@ def create_invoice(data: InvoiceCreate, db: Session = Depends(get_db)):
     invoice = None
     invoice_number = None
     last_err = None
-    # Retry the number assignment a few times — _next_invoice_number is just
+    # Retry the number assignment a few times — next_invoice_number is just
     # MAX+1 (no row-level lock), so two concurrent creates can both compute
     # the same number and one will hit the invoices.invoice_number UNIQUE
     # constraint at flush. The constraint is the safety net; this is the UX.
     for _ in range(10):
-        invoice_number = _next_invoice_number(db)
+        invoice_number = next_invoice_number(db)
         invoice = Invoice(
             invoice_number=invoice_number,
             customer_id=cust_id,
@@ -846,7 +838,7 @@ def duplicate_invoice(invoice_id: int, db: Session = Depends(get_db)):
     if not original:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    new_number = _next_invoice_number(db)
+    new_number = next_invoice_number(db)
     today = date.today()
 
     # Parse terms for due date

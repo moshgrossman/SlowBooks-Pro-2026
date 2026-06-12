@@ -18,15 +18,24 @@ from app.models.accounts import Account
 CENT = Decimal("0.01")
 
 
+def quantize_to(value, exp: Decimal, rounding=ROUND_HALF_UP) -> Decimal:
+    """Coerce to Decimal quantized to an arbitrary exponent (half-up).
+
+    For non-money precisions (4-decimal unit costs, quantities). None/falsy
+    coerce to 0 so callers can quantize optional/nullable amounts directly.
+    """
+    if not isinstance(value, Decimal):
+        value = Decimal(str(value or 0))
+    return value.quantize(exp, rounding=rounding)
+
+
 def _q(value) -> Decimal:
     """Coerce to Decimal rounded to two places (half-up, matches PostgreSQL default).
 
     This is the single canonical money-quantize helper for the app. None/falsy
     coerce to 0.00 so callers can quantize optional/nullable amounts directly.
     """
-    if not isinstance(value, Decimal):
-        value = Decimal(str(value or 0))
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
+    return quantize_to(value, CENT)
 
 
 # Public alias — reads more clearly at call sites that prefer a descriptive name.
@@ -179,4 +188,10 @@ def get_undeposited_funds_id(db: Session) -> int:
 def get_ap_account_id(db: Session) -> int:
     """Get Accounts Payable account ID (2000)."""
     acct = db.query(Account).filter(Account.account_number == "2000").first()
+    return acct.id if acct else None
+
+
+def get_cc_account_id(db: Session) -> int:
+    """Get Credit Card Payable account ID (2100)."""
+    acct = db.query(Account).filter(Account.account_number == "2100").first()
     return acct.id if acct else None

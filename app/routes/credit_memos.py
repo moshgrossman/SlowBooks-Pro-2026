@@ -7,10 +7,10 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import func as sqlfunc
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.credit_memos import (
     CreditMemo,
     CreditMemoLine,
@@ -34,16 +34,9 @@ from app.services.accounting import (
     _q,
 )
 from app.services.closing_date import check_closing_date
+from app.services.numbering import next_credit_memo_number
 
 router = APIRouter(prefix="/api/credit-memos", tags=["credit_memos"])
-
-
-def _next_cm_number(db: Session) -> str:
-    last = db.query(sqlfunc.max(CreditMemo.memo_number)).scalar()
-    if last and last.replace("CM-", "").isdigit():
-        num = int(last.replace("CM-", "")) + 1
-        return f"CM-{num:04d}"
-    return "CM-0001"
 
 
 @router.get("", response_model=list[CreditMemoResponse])
@@ -54,8 +47,7 @@ def list_credit_memos(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = max(1, min(limit, 1000))
-    skip = max(0, skip)
+    skip, limit = clamp_pagination(skip, limit)
     # Eager-load .customer and .lines to avoid N+1 during model_validate.
     q = db.query(CreditMemo).options(
         joinedload(CreditMemo.customer),
@@ -97,13 +89,13 @@ def create_credit_memo(data: CreditMemoCreate, db: Session = Depends(get_db)):
     subtotal, tax_amount, total = compute_line_totals(data.lines, data.tax_rate)
 
     cm = None
-    # Retry the number assignment a few times — _next_cm_number is just
+    # Retry the number assignment a few times — next_credit_memo_number is just
     # MAX+1 (no row-level lock), so two concurrent creates can both compute
     # the same number and one will hit the credit_memos.memo_number UNIQUE
     # constraint at flush (mirrors the invoice-number retry).
     for _ in range(10):
         cm = CreditMemo(
-            memo_number=_next_cm_number(db),
+            memo_number=next_credit_memo_number(db),
             customer_id=data.customer_id,
             date=data.date,
             original_invoice_id=data.original_invoice_id,

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.payments import Payment, PaymentAllocation
 from app.models.invoices import Invoice, InvoiceStatus
 from app.models.contacts import Customer
@@ -33,8 +34,7 @@ def list_payments(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = max(1, min(limit, 1000))
-    skip = max(0, skip)
+    skip, limit = clamp_pagination(skip, limit)
     # Eager-load to avoid N+1 on .customer and .allocations during model_validate.
     q = db.query(Payment).options(
         joinedload(Payment.customer),

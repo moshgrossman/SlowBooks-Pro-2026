@@ -7,24 +7,17 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import func as sqlfunc
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.purchase_orders import PurchaseOrder, PurchaseOrderLine, POStatus
 from app.models.contacts import Vendor
 from app.schemas.purchase_orders import POCreate, POUpdate, POResponse
 from app.services.accounting import _q, compute_line_totals
+from app.services.numbering import next_po_number
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase_orders"])
-
-
-def _next_po_number(db: Session) -> str:
-    last = db.query(sqlfunc.max(PurchaseOrder.po_number)).scalar()
-    if last and last.replace("PO-", "").isdigit():
-        num = int(last.replace("PO-", "")) + 1
-        return f"PO-{num:04d}"
-    return "PO-0001"
 
 
 @router.get("", response_model=list[POResponse])
@@ -35,8 +28,7 @@ def list_pos(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = max(1, min(limit, 1000))
-    skip = max(0, skip)
+    skip, limit = clamp_pagination(skip, limit)
     # Eager-load to avoid N+1 on .vendor and .lines during model_validate.
     q = db.query(PurchaseOrder).options(
         joinedload(PurchaseOrder.vendor),
@@ -80,11 +72,11 @@ def create_po(data: POCreate, db: Session = Depends(get_db)):
     po = None
     po_number = None
     last_err = None
-    # Same race as create_invoice / create_estimate: _next_po_number is MAX+1
+    # Same race as create_invoice / create_estimate: next_po_number is MAX+1
     # without a row-level lock, so two concurrent creates can collide on the
     # po_number UNIQUE constraint. Retry on IntegrityError.
     for _ in range(10):
-        po_number = _next_po_number(db)
+        po_number = next_po_number(db)
         po = PurchaseOrder(
             po_number=po_number,
             vendor_id=vendor_id,

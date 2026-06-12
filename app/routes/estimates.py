@@ -15,12 +15,14 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.estimates import Estimate, EstimateLine, EstimateStatus
 from app.models.invoices import Invoice, InvoiceLine, InvoiceStatus
 from app.models.contacts import Customer
 from app.schemas.estimates import EstimateCreate, EstimateUpdate, EstimateResponse
 from app.schemas.invoices import InvoiceResponse
 from app.services.pdf_service import generate_estimate_pdf
+from app.services.numbering import next_estimate_number, next_invoice_number
 from app.services.settings_service import get_all_settings as get_settings, set_setting
 from app.services.accounting import (
     _q,
@@ -34,31 +36,15 @@ from app.services.accounting import (
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
 
 
-def _next_estimate_number(db: Session) -> str:
-    settings = get_settings(db)
-    prefix = settings.get("estimate_prefix", "E-")
-    next_number = settings.get("estimate_next_number", "1001").strip() or "1001"
-    try:
-        current_number = int(next_number)
-    except ValueError:
-        current_number = 1001
-
-    while True:
-        estimate_number = f"{prefix}{current_number}"
-        exists = (
-            db.query(Estimate.id)
-            .filter(Estimate.estimate_number == estimate_number)
-            .first()
-        )
-        if not exists:
-            return estimate_number
-        current_number += 1
-
-
 @router.get("", response_model=list[EstimateResponse])
 def list_estimates(
-    status: str = None, customer_id: int = None, db: Session = Depends(get_db)
+    status: str = None,
+    customer_id: int = None,
+    skip: int = 0,
+    limit: int = 500,
+    db: Session = Depends(get_db),
 ):
+    skip, limit = clamp_pagination(skip, limit)
     # Eager-load .customer and .lines to avoid N+1 during model_validate.
     q = db.query(Estimate).options(
         joinedload(Estimate.customer),
@@ -68,7 +54,7 @@ def list_estimates(
         q = q.filter(Estimate.status == status)
     if customer_id:
         q = q.filter(Estimate.customer_id == customer_id)
-    estimates = q.order_by(Estimate.date.desc()).all()
+    estimates = q.order_by(Estimate.date.desc()).offset(skip).limit(limit).all()
     results = []
     for est in estimates:
         resp = EstimateResponse.model_validate(est)
@@ -102,11 +88,11 @@ def create_estimate(data: EstimateCreate, db: Session = Depends(get_db)):
     estimate = None
     estimate_number = None
     last_err = None
-    # Same race as create_invoice: _next_estimate_number's check-then-insert
+    # Same race as create_invoice: next_estimate_number's check-then-insert
     # window lets two concurrent creates pick the same number. Retry on
     # IntegrityError; the UNIQUE constraint is the safety net.
     for _ in range(10):
-        estimate_number = _next_estimate_number(db)
+        estimate_number = next_estimate_number(db)
         estimate = Estimate(
             estimate_number=estimate_number,
             customer_id=cust_id,
@@ -262,9 +248,8 @@ def convert_to_invoice(estimate_id: int, db: Session = Depends(get_db)):
     check_closing_date(db, estimate.date)
 
     # Get next invoice number
-    from app.routes.invoices import _next_invoice_number
 
-    invoice_number = _next_invoice_number(db)
+    invoice_number = next_invoice_number(db)
 
     # Parse terms for due date
     settings = get_settings(db)

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routes._helpers import clamp_pagination
 from app.models.banking import (
     BankAccount,
     BankTransaction,
@@ -82,8 +83,7 @@ def list_bank_transactions(
     limit: int = 500,
     db: Session = Depends(get_db),
 ):
-    limit = max(1, min(limit, 1000))
-    skip = max(0, skip)
+    skip, limit = clamp_pagination(skip, limit)
     q = db.query(BankTransaction)
     if bank_account_id:
         q = q.filter(BankTransaction.bank_account_id == bank_account_id)
