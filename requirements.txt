@@ -23,7 +23,7 @@ weasyprint==68.1
 pydyf==0.12.1
 
 # Form upload parsing
-python-multipart==0.0.27  # GHSA — DoS via unbounded multipart part headers (< 0.0.27)
+python-multipart==0.0.31  # CVE-2026-53538/-53539 (fixed 0.0.30), CVE-2026-53540 (fixed 0.0.31) — multipart parsing DoS hardening
 
 # Bank-statement parsing + dates
 ofxparse>=0.21,<1.0
@@ -38,11 +38,13 @@ intuit-oauth>=1.2.0,<2.0
 pyjwt>=2.10.0,<3.0
 
 # Crypto / HTTP / JSON
-# Cap raised from <44.0 to <47.0 to pull cryptography>=46.0.5, which fixes:
-#   CVE-2023-50782, CVE-2024-0727, CVE-2024-12797,
-#   PYSEC-2024-225, PYSEC-2026-35, CVE-2026-26007,
-#   GHSA-h4gh-qq45-vh27
-cryptography>=46.0.5,<47.0
+# Cap raised from <47.0 to <49.0 to pull cryptography>=48.0.1 (GHSA-537c-gmf6-5ccf).
+# 47.x/48.x breaking changes reviewed: OpenSSL <3.0 and Python 3.8 dropped, binary
+# EC curves removed, key loading raises UnsupportedAlgorithm instead of ValueError —
+# none affect our Fernet/PBKDF2HMAC-only usage.
+# (46.x cap previously fixed: CVE-2023-50782, CVE-2024-0727, CVE-2024-12797,
+#  PYSEC-2024-225, PYSEC-2026-35, CVE-2026-26007, GHSA-h4gh-qq45-vh27)
+cryptography>=48.0.1,<49.0
 httpx>=0.27.0,<1.0
 # (orjson dropped — FastAPI 0.121+ serializes via Pydantic natively and
 #  deprecated ORJSONResponse in 0.136; we no longer pin a custom encoder.)
