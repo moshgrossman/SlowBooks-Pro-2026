@@ -6,35 +6,46 @@ Ways to run Slowbooks Pro 2026.
 
 ## Option 0: One-click desktop app (Windows)
 
-**Easiest for a single user on Windows** who already has **Docker Desktop** and
-**Python** installed. Runs Slowbooks in its own window — no browser tab, no
-`.env` editing, no command line.
-
-### Prerequisites
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and **running** (its WSL2 backend is the default on Windows 10/11)
-- Python 3 installed and on your `PATH` (`python --version` should work)
+**Easiest for a single user on Windows.** Nothing needs to be installed
+beforehand — no Python, no Docker, no WSL2, no git. One file sets all of that
+up automatically and opens Slowbooks in its own window (no browser tab).
 
 ### Steps
 
-1. Download / clone this repository.
-2. Double-click **`Launch SlowBooks Pro.bat`**.
+1. Download **[`Setup SlowBooks Pro.bat`](https://raw.githubusercontent.com/moshgrossman/SlowBooks-Pro-2026/main/Setup%20SlowBooks%20Pro.bat)**
+   (right-click → Save link as...).
+2. Double-click it.
+3. Windows will likely show a **"Windows protected your PC"** warning — this
+   is expected for a downloaded, unsigned script. Click **More info**, then
+   **Run anyway**.
+4. Approve the administrator prompt (needed to install Python and enable
+   WSL2).
 
-That's it. On first launch it will:
+That's it — walk away. It will:
 
-- create your `.env` and generate a strong `PAYROLL_ENCRYPTION_SECRET` for you
-  (this is the value that causes the *"PAYROLL_ENCRYPTION_SECRET is the public
-  dev default"* error when it's left unset — the launcher sets it correctly so
-  you never see that error),
-- install the small window component the first time,
-- start the app in Docker, and
-- open Slowbooks in a desktop window once it's ready.
+- download the Slowbooks Pro application files,
+- install Python if it isn't already present,
+- enable WSL2 and install a small Linux environment if needed,
+- install Docker Engine *inside* that Linux environment (not Docker
+  Desktop — lighter, and starts faster),
+- generate a strong `PAYROLL_ENCRYPTION_SECRET` for you (this is the value
+  that causes the *"PAYROLL_ENCRYPTION_SECRET is the public dev default"*
+  error when it's left unset — Setup sets it correctly so you never see that
+  error),
+- build and start the app, and
+- open Slowbooks in a desktop window once it's ready, plus leave a shortcut
+  on your Desktop for next time.
 
-To stop the app, double-click **`Stop SlowBooks Pro.bat`** (your data is kept
-safe in Docker volumes for next time).
+**If it stops partway through** (most commonly: Windows needs to restart to
+finish enabling WSL2), it will tell you exactly what to do — usually just
+"restart your computer, then double-click this file again." It always picks
+up where it left off rather than starting over.
 
-> First launch downloads and builds the container images, so it can take a few
-> minutes. Later launches are quick.
+First run downloads and builds everything, so it can take several minutes.
+Later opens (via the Desktop shortcut, which runs `Launch SlowBooks Pro.bat`
+directly) are quick. To stop the app, use `Stop SlowBooks Pro.bat` inside the
+installed folder (`%LOCALAPPDATA%\SlowBooksPro\app`) — your data is kept safe
+in Docker volumes for next time.
 
 ---
 

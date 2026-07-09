@@ -2,8 +2,15 @@
 # ============================================================================
 # Slowbooks Pro 2026 — Desktop Launcher
 #
-# One double-click to run Slowbooks Pro as a native desktop window on a
-# machine that already has Docker Desktop (WSL2 backend) and Python.
+# One double-click to run Slowbooks Pro as a native desktop window on
+# Windows. Docker Engine runs *inside* a WSL2 Linux distro (installed by
+# Setup-SlowBooksPro.ps1) rather than via Docker Desktop, so every Docker
+# call here is routed through `wsl.exe` instead of calling `docker` directly
+# on Windows. The app's on-disk copy also lives inside that WSL distro's own
+# filesystem (not under /mnt/c) — bind mounts and builds across the
+# Windows<->WSL2 boundary are slow, so .env and docker-compose.yml are read
+# from there via the \\wsl.localhost\... UNC path, which Windows can access
+# like a normal network path.
 #
 # What it does:
 #   1. Makes sure .env exists (copies .env.example if not).
@@ -13,8 +20,9 @@
 #   3. Sets APP_DEBUG=true — correct for a single-machine, loopback-only
 #      deploy. It only skips the HTTPS/TLS *production* gates that don't apply
 #      to localhost; employee bank PII is still encrypted with the real key.
-#   4. Brings the Docker Compose stack up.
-#   5. Waits for the app's /health endpoint.
+#   4. Brings the Docker Compose stack up inside WSL2.
+#   5. Waits for the app's /health endpoint (WSL2 forwards localhost ports
+#      to Windows automatically, so this is a normal 127.0.0.1 request).
 #   6. Opens a native window (pywebview / WebView2), not a browser tab.
 #
 # Usage:
@@ -30,11 +38,17 @@ import subprocess
 import sys
 import time
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
-REPO_ROOT = Path(__file__).resolve().parent
-ENV_PATH = REPO_ROOT / ".env"
-ENV_EXAMPLE_PATH = REPO_ROOT / ".env.example"
+# The WSL distro Setup-SlowBooksPro.ps1 installs Docker Engine into, and the
+# app's copy inside it (two views of the same files: POSIX path as seen from
+# a `wsl` shell, UNC path as seen from Windows/Python's own filesystem calls).
+WSL_DISTRO = "Ubuntu"
+WSL_APP_DIR_POSIX = "/root/slowbooks-pro"
+WSL_APP_DIR_UNC = PureWindowsPath(rf"\\wsl.localhost\{WSL_DISTRO}\root\slowbooks-pro")
+
+ENV_PATH = Path(WSL_APP_DIR_UNC / ".env")
+ENV_EXAMPLE_PATH = Path(WSL_APP_DIR_UNC / ".env.example")
 
 # Must match the shipped default in app/config.py — the value the startup
 # guard in app/main.py rejects against a real database.
@@ -56,7 +70,11 @@ def ensure_env_file() -> None:
     if ENV_PATH.exists():
         return
     if not ENV_EXAMPLE_PATH.exists():
-        _log("ERROR: neither .env nor .env.example found — is this the repo root?")
+        _log(
+            "ERROR: neither .env nor .env.example found in the Linux "
+            f"environment ({WSL_APP_DIR_UNC}). Run 'Setup SlowBooks Pro.bat' "
+            "first to install everything."
+        )
         sys.exit(1)
     shutil.copyfile(ENV_EXAMPLE_PATH, ENV_PATH)
     _log("Created .env from .env.example")
@@ -136,39 +154,44 @@ def get_app_port() -> int:
     return 3001
 
 
-# ---- Docker ----------------------------------------------------------------
+# ---- Docker (runs inside WSL2, not on Windows directly) -------------------
 
 
-def _compose_base_cmd() -> list[str]:
-    """Return the working compose command (`docker compose` or `docker-compose`)."""
-    if shutil.which("docker"):
-        try:
-            subprocess.run(
-                ["docker", "compose", "version"],
-                cwd=REPO_ROOT,
-                capture_output=True,
-                check=True,
-            )
-            return ["docker", "compose"]
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
-    if shutil.which("docker-compose"):
-        return ["docker-compose"]
-    _log(
-        "ERROR: Docker was not found. Install Docker Desktop and make sure it "
-        "is running, then try again."
+def ensure_wsl_ready() -> None:
+    """Confirm the WSL distro Setup-SlowBooksPro.ps1 sets up is reachable."""
+    try:
+        result = subprocess.run(
+            ["wsl.exe", "-l", "-q"], capture_output=True, text=True, timeout=15
+        )
+    except FileNotFoundError:
+        _log(
+            "ERROR: WSL is not available on this machine. Run "
+            "'Setup SlowBooks Pro.bat' first to set everything up."
+        )
+        sys.exit(1)
+    distros = [d.strip() for d in result.stdout.replace("\x00", "").splitlines()]
+    if WSL_DISTRO not in distros:
+        _log(
+            f"ERROR: the '{WSL_DISTRO}' Linux environment was not found. Run "
+            "'Setup SlowBooks Pro.bat' first to set everything up."
+        )
+        sys.exit(1)
+
+
+def _wsl_run(command: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["wsl.exe", "-d", WSL_DISTRO, "-u", "root", "--", "bash", "-lc", command]
     )
-    sys.exit(1)
 
 
 def compose_up() -> None:
-    _log("Starting Docker Compose stack (this can take a while the first time)...")
-    cmd = _compose_base_cmd() + ["up", "-d", "--build"]
-    result = subprocess.run(cmd, cwd=REPO_ROOT)
+    _log("Starting the Docker Compose stack inside WSL2 (first run can take a while)...")
+    result = _wsl_run(f"cd {WSL_APP_DIR_POSIX} && docker compose up -d --build")
     if result.returncode != 0:
         _log(
-            "ERROR: `docker compose up` failed. Make sure Docker Desktop is "
-            "running, then try again."
+            "ERROR: starting the app inside WSL2 failed. If you haven't run "
+            "'Setup SlowBooks Pro.bat' yet, run that first — it installs "
+            "Docker inside WSL2. Otherwise check the messages above."
         )
         sys.exit(result.returncode)
 
@@ -191,7 +214,9 @@ def wait_for_health(port: int) -> bool:
         time.sleep(HEALTH_POLL_INTERVAL_SECONDS)
     _log(
         f"ERROR: app did not become healthy within {HEALTH_TIMEOUT_SECONDS}s. "
-        "Check container logs with: docker compose logs -f slowbooks"
+        "Check container logs from an elevated PowerShell with: "
+        f'wsl.exe -d {WSL_DISTRO} -u root -- bash -lc '
+        f'"cd {WSL_APP_DIR_POSIX} && docker compose logs -f slowbooks"'
     )
     return False
 
@@ -235,6 +260,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    ensure_wsl_ready()
     ensure_env_file()
     ensure_encryption_secret()
     ensure_app_debug_true()

@@ -3,7 +3,9 @@ REM ==========================================================================
 REM  Slowbooks Pro 2026 - one-click desktop launcher (Windows)
 REM
 REM  Double-click this file to start Slowbooks Pro in its own window.
-REM  Requires Docker Desktop (running) and Python already installed.
+REM  Requires Python, WSL2, and Docker Engine to already be set up — run
+REM  "Setup SlowBooks Pro.bat" first if you haven't. desktop_launcher.py
+REM  itself talks to Docker inside WSL2, so nothing else is needed here.
 REM ==========================================================================
 
 cd /d "%~dp0"
