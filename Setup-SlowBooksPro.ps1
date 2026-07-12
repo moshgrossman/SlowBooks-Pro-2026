@@ -46,23 +46,54 @@ function Update-SessionPath {
                 [Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
+# Run a candidate interpreter and return its real sys.executable path, or
+# $null. Deliberately NO stderr redirection: under Windows PowerShell 5.1
+# with $ErrorActionPreference='Stop', redirecting a native command's stderr
+# (2>$null) turns ANY stderr text into a terminating error -- which made an
+# already-installed Python look missing here. Unredirected stderr just
+# prints, and a failing candidate is caught by the exit code instead.
+function Resolve-PythonPath([string]$exe, [string[]]$prefixArgs) {
+    try {
+        $ErrorActionPreference = 'Continue'  # scoped to this function
+        $out = & $exe @prefixArgs '-c' 'import sys; print(sys.executable)'
+        if ($LASTEXITCODE -eq 0 -and $out) {
+            return ([string]($out | Select-Object -First 1)).Trim()
+        }
+    } catch { }
+    return $null
+}
+
 # Resolve a REAL Python 3 interpreter path. "python" on a fresh Windows
 # install is often the Microsoft Store alias stub, which is not Python --
-# so verify by actually running it and resolving sys.executable.
+# so every candidate is verified by actually running it. PATH can also be
+# stale in this console (Python installed by an earlier setup run), so the
+# standard install directories are probed directly as a last resort.
 function Get-Python {
-    $launcher = Get-Command py -ErrorAction SilentlyContinue
-    if ($launcher) {
-        try {
-            [string]$exe = (& $launcher.Source -3 -c 'import sys; print(sys.executable)' 2>$null | Select-Object -First 1)
-            if ($LASTEXITCODE -eq 0 -and $exe) { return $exe.Trim() }
-        } catch { }
+    $py = Get-Command py -ErrorAction SilentlyContinue
+    if ($py) {
+        $found = Resolve-PythonPath $py.Source @('-3')
+        if ($found) { return $found }
+        Write-Host "    ('py' launcher at $($py.Source) could not run Python 3)"
     }
-    $direct = Get-Command python -ErrorAction SilentlyContinue
-    if ($direct) {
-        try {
-            [string]$exe = (& $direct.Source -c 'import sys; print(sys.executable)' 2>$null | Select-Object -First 1)
-            if ($LASTEXITCODE -eq 0 -and $exe) { return $exe.Trim() }
-        } catch { }
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($python) {
+        $found = Resolve-PythonPath $python.Source @()
+        if ($found) { return $found }
+        Write-Host "    ('python' at $($python.Source) did not run -- likely the Microsoft Store stub)"
+    }
+    foreach ($pattern in @(
+        (Join-Path $env:ProgramFiles 'Python3*\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python3*\python.exe')
+    )) {
+        $exes = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending
+        foreach ($exe in $exes) {
+            $found = Resolve-PythonPath $exe.FullName @()
+            if ($found) {
+                Write-Host "    (not on this console's PATH, but found at $found)"
+                return $found
+            }
+        }
     }
     return $null
 }
