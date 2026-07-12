@@ -217,24 +217,21 @@ def manifest_create_company(name: str) -> dict:
     if not name:
         return {"success": False, "error": "Company name is required"}
 
-    derived = company_filename_for(name)
-    if derived is None:
+    filename = company_filename_for(name)
+    if filename is None:
         return {
             "success": False,
             "error": "Company name must contain at least one letter or number",
         }
 
-    # company_filename_for() already sanitized, but re-apply the barrier at
-    # the point of use — os.path.basename + strict regex in the same scope
-    # as the path construction — so static analysis (CodeQL
-    # py/path-injection) can see the taint from `name` is cut here. Same
-    # convention as backup_service.restore_backup().
-    filename = os.path.basename(derived)
-    if filename != derived or not _COMPANY_FILENAME_RE.match(filename):
-        return {"success": False, "error": "Invalid company file name"}
-
     manifest = _read_manifest()
-    db_path = companies_dir() / filename
+    # company_filename_for() already sanitized, but verify the resolved
+    # path stays inside the companies dir in the same scope as its uses —
+    # the containment check is the barrier CodeQL recognizes for
+    # py/path-injection, same convention as app/routes/backups.py.
+    db_path = (companies_dir() / filename).resolve()
+    if not db_path.is_relative_to(companies_dir().resolve()):
+        return {"success": False, "error": "Invalid company file name"}
     if any(c.get("file") == filename for c in manifest["companies"]) or (
         db_path.exists()
     ):
