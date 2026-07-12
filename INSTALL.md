@@ -29,6 +29,8 @@ everything up automatically.
 
 - The Slowbooks Pro application itself (into `%LOCALAPPDATA%\SlowBooksPro`)
 - Python 3.13 (the language runtime the app is written in)
+- Microsoft WebView2, only if missing (the window component; already present
+  on most Windows 10/11 machines)
 - The GTK3 runtime (a small component used to generate PDF invoices and tax forms)
 
 That's it — **no Docker, no WSL2, no database server**. Your books are stored
