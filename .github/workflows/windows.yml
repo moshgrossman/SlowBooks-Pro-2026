@@ -1,0 +1,174 @@
+name: Windows
+
+# Builds the native Windows desktop app: PyInstaller onedir bundle →
+# smoke test → Azure Trusted Signing (OIDC, no stored secrets) → portable
+# .zip + Inno Setup installer → GitHub Release on tag.
+#
+# Unlike EasyAmp (MSYS2 python for GTK4), this build uses standard CPython:
+# pywebview needs pythonnet/.NET, which mingw python can't load. MSYS2 is
+# only a DLL donor — WeasyPrint's Pango/GObject/Fontconfig natives are
+# staged into the bundle and loaded via WEASYPRINT_DLL_DIRECTORIES.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows .exe installer + zip
+    runs-on: windows-latest
+    # The 'release' environment binds this job's OIDC token subject to
+    # `repo:VonHoltenCodes/SlowBooks-Pro-2026:environment:release`, which is
+    # what the Azure Trusted Signing federated credential trusts.
+    environment: release
+    permissions:
+      contents: write
+      id-token: write             # required for federated OIDC → Azure login
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'  # pythonnet-safe; 3.13 unverified
+
+      - name: Read version (and check it matches the tag)
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path app/__init__.py -Pattern '__version__ = "(.+)"').Matches.Groups[1].Value
+          if (-not $ver) { Write-Error "Could not parse __version__ from app/__init__.py"; exit 1 }
+          Write-Host "Version: $ver"
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $tagver = "${{ github.ref_name }}".TrimStart("v")
+            if ($tagver -ne $ver) { Write-Error "Tag ${{ github.ref_name }} != app version $ver"; exit 1 }
+          }
+          "APP_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set up MSYS2 (WeasyPrint native DLL donor)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-pango
+            mingw-w64-x86_64-fontconfig
+            mingw-w64-x86_64-ntldd-git
+
+      - name: Stage WeasyPrint native DLLs
+        shell: msys2 {0}
+        run: |
+          # WeasyPrint (>=61) dlopens exactly these via cffi:
+          #   gobject-2.0, pango-1.0, pangoft2-1.0, harfbuzz,
+          #   harfbuzz-subset, fontconfig
+          # Copy them plus their full transitive closure (ntldd -R).
+          set -e
+          mkdir -p packaging/windows/gtk-dlls
+          cd packaging/windows/gtk-dlls
+          for lib in libgobject-2.0-0 libglib-2.0-0 libpango-1.0-0 \
+                     libpangoft2-1.0-0 libharfbuzz-0 libharfbuzz-subset-0 \
+                     libfontconfig-1; do
+            cp "/mingw64/bin/$lib.dll" .
+          done
+          for _ in 1 2 3; do  # iterate until the closure stops growing
+            for d in *.dll; do ntldd -R "$d"; done \
+              | grep -io '[a-z0-9_.+-]*\.dll => /mingw64/bin/[a-z0-9_.+-]*\.dll' \
+              | sed 's/.*=> //' | sort -u \
+              | while read -r dep; do cp -n "$dep" . 2>/dev/null || true; done
+          done
+          echo "Staged $(ls -1 | wc -l) DLLs:"; ls -1
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-desktop.txt
+          pip install pyinstaller pyinstaller-hooks-contrib pillow
+
+      - name: Build the .ico from the icon asset
+        shell: pwsh
+        run: |
+          python -c "from PIL import Image; Image.open('assets/icon-256.png').save('packaging/windows/slowbookspro.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+
+      - name: Build the bundle (PyInstaller)
+        shell: pwsh
+        run: |
+          cd packaging/windows
+          pyinstaller --noconfirm --clean SlowBooksPro.spec
+
+      - name: Smoke test the frozen bundle
+        shell: pwsh
+        run: |
+          # console=False exe: no stdout — verdict is the exit code, details
+          # land in launcher.log under the isolated data dir.
+          $env:SLOWBOOKS_DATA_DIR = "$env:RUNNER_TEMP\slowbooks-smoke\data"
+          $exe = "packaging\windows\dist\SlowBooksPro\SlowBooksPro.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -Wait -NoNewWindow
+          $log = "$env:SLOWBOOKS_DATA_DIR\launcher.log"
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no launcher.log written" }
+          if ($p.ExitCode -ne 0) { Write-Error "Smoke test failed (exit $($p.ExitCode))"; exit 1 }
+          Write-Host "Smoke test passed."
+
+      # Sign SlowBooksPro.exe BEFORE zipping so the portable archive
+      # contains the signed binary. OIDC login; no client secret stored.
+      - name: Azure login (OIDC for Trusted Signing)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign portable SlowBooksPro.exe (Trusted Signing)
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          endpoint: https://cus.codesigning.azure.net/
+          trusted-signing-account-name: easyamp-signing
+          certificate-profile-name: slowbookspro-public-trust
+          files-folder: ${{ github.workspace }}/packaging/windows/dist/SlowBooksPro
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com/
+          timestamp-digest: SHA256
+
+      - name: Package the portable .zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path packaging\windows\dist\SlowBooksPro\* -DestinationPath SlowBooksPro-windows-x64.zip -Force
+
+      - name: Build the installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=$env:APP_VERSION" packaging\windows\SlowBooksPro.iss
+          Copy-Item packaging\windows\SlowBooksPro-Setup-x64.exe .\SlowBooksPro-Setup-x64.exe
+
+      - name: Sign installer SlowBooksPro-Setup-x64.exe (Trusted Signing)
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          endpoint: https://cus.codesigning.azure.net/
+          trusted-signing-account-name: easyamp-signing
+          certificate-profile-name: slowbookspro-public-trust
+          files-folder: ${{ github.workspace }}
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com/
+          timestamp-digest: SHA256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SlowBooksPro-windows-x64
+          path: |
+            SlowBooksPro-windows-x64.zip
+            SlowBooksPro-Setup-x64.exe
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            SlowBooksPro-windows-x64.zip
+            SlowBooksPro-Setup-x64.exe

@@ -439,6 +439,11 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 index_path = Path(__file__).parent.parent / "index.html"
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(static_dir / "favicon.ico")
+
+
 @app.get("/health")
 async def health_check():
     """Liveness probe. Always on, no auth. Used by load balancers,
