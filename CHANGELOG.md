@@ -10,9 +10,9 @@ on what the software does, not on what sprint shipped what.
 ### Native Windows desktop install (no Docker, no WSL2)
 
 Replaces the WSL2/Docker-Engine Windows setup from PR #1 with a fully
-native install: the app runs as a normal Windows Python process against
-SQLite, in its own desktop window (pywebview → WebView2), with WeasyPrint's
-PDF rendering supplied by the GTK3 runtime installer.
+native install: the app runs as a normal Windows process against SQLite,
+in its own desktop window (pywebview → WebView2). Desktop-mode groundwork
+contributed in PR #14; delivery is a signed Windows installer (see below).
 
 - **Multi-company, QuickBooks-style:** each company is its own SQLite file
   under `%LOCALAPPDATA%\SlowBooksPro\data\companies\`, tracked in a
@@ -29,15 +29,15 @@ PDF rendering supplied by the GTK3 runtime installer.
   defaults replaced with the dialect-portable `CURRENT_TIMESTAMP`
   (identical semantics on PostgreSQL; these migrations have already run on
   existing Postgres installs and never re-run).
-- **Setup/launch tooling:** `Setup SlowBooks Pro.bat` (single download,
-  self-elevates, always fetches the latest `Setup-SlowBooksPro.ps1` from
-  `main`), idempotent PowerShell setup (app zip snapshot, Python via
-  winget/python.org, GTK3 runtime, pip installs, Desktop shortcut — no
-  reboot ever), `desktop_launcher.py` (env prep with a generated
+- **Launcher:** `desktop_launcher.py` — env prep with a generated
   `PAYROLL_ENCRYPTION_SECRET`, company picker, uvicorn on 127.0.0.1,
-  native window; closing the window stops the server). Installs made by
-  the retired WSL2 setup are upgraded in place via a version marker,
-  preserving `.env` and all data.
+  native window; closing the window stops the server.
+- **Delivery is a signed installer**, not setup scripts: the
+  `.bat`/`.ps1` bootstrap flow contributed in PR #14 was replaced by
+  `SlowBooksPro-Setup-x64.exe` — a PyInstaller bundle (Python and the
+  PDF-rendering libraries included, nothing installed system-wide) built
+  by CI and code-signed via Azure Trusted Signing, so Windows shows a
+  verified publisher instead of a SmartScreen warning.
 - The Docker/Postgres multi-company path (separate databases per company)
   is unchanged and still used when `DATABASE_URL` is Postgres.
 

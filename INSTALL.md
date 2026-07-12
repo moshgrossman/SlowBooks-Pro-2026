@@ -4,37 +4,32 @@ Ways to run Slowbooks Pro 2026.
 
 ---
 
-## Option 0: One-click desktop app (Windows)
+## Option 0: Windows installer
 
-**Recommended for non-technical Windows users.** No Docker, no WSL2, no command
-line — Slowbooks Pro runs as a normal desktop app in its own window (no
-browser tab). Nothing needs to be installed beforehand; one file sets
-everything up automatically.
+**Recommended for Windows users.** No Docker, no WSL2, no command line —
+Slowbooks Pro runs as a normal desktop app in its own window (no browser
+tab). The installer is digitally signed, so Windows shows a verified
+publisher instead of a SmartScreen warning.
 
 ### Steps
 
-1. Download **[`Setup SlowBooks Pro.bat`](https://raw.githubusercontent.com/moshgrossman/SlowBooks-Pro-2026/main/Setup%20SlowBooks%20Pro.bat)**
-   (right-click → Save As if your browser shows it as text).
-2. Double-click it.
-3. Approve the two prompts you'll see:
-   - **Windows SmartScreen** ("Windows protected your PC") — click
-     **More info → Run anyway**. This is expected for any unsigned downloaded
-     script; it appears only the first time.
-   - **User Account Control** (Administrator permission) — needed to install
-     Python and a small PDF-rendering component system-wide.
-4. Wait for setup to finish. The app opens by itself, and a **SlowBooks Pro**
-   shortcut appears on your Desktop for next time.
+1. Download **`SlowBooksPro-Setup-x64.exe`** from the
+   [latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest)
+   (or from [slowbookspro.com](https://www.slowbookspro.com)).
+2. Double-click it and follow the wizard. Everything installs into
+   `Program Files`; a Start Menu entry (and optional Desktop shortcut) is
+   created.
+3. Launch **SlowBooks Pro 2026** — you'll be asked to create your first
+   company, and the app opens in its own window.
 
-### What it installs
+The app is fully self-contained — **no Docker, no WSL2, no database server,
+no Python install**. Your books are stored in ordinary files on your own
+machine, under `%LOCALAPPDATA%\SlowBooksPro`, which upgrades and even
+uninstalls leave untouched.
 
-- The Slowbooks Pro application itself (into `%LOCALAPPDATA%\SlowBooksPro`)
-- Python 3.13 (the language runtime the app is written in)
-- Microsoft WebView2, only if missing (the window component; already present
-  on most Windows 10/11 machines)
-- The GTK3 runtime (a small component used to generate PDF invoices and tax forms)
-
-That's it — **no Docker, no WSL2, no database server**. Your books are stored
-in ordinary files on your own machine.
+When a new version is released, the footer of the app shows an
+**Update available** notice — download the new installer and run it over
+the old install; your companies and settings are kept.
 
 ### Working with multiple companies
 
@@ -46,16 +41,14 @@ create a new one). To switch companies, close the app and open it again.
 ### Stopping the app
 
 Just close the window — the server shuts down with it. If something ever gets
-stuck, run `Stop SlowBooks Pro.bat` in the app folder as a safety net.
+stuck, end the **SlowBooksPro** process from Task Manager.
 
 ### Troubleshooting
 
-Day-to-day, the Desktop shortcut opens the app with no console window — it
-runs quietly in the background like any other desktop app. If something goes
-wrong before the app window can open, a small popup explains it, and full
-details are written to `%LOCALAPPDATA%\SlowBooksPro\data\launcher.log`. For
-live console output while troubleshooting something trickier, double-click
-`Launch SlowBooks Pro.bat` inside the app folder instead of the shortcut.
+The app runs with no console window — quietly in the background like any
+other desktop app. If something goes wrong before the app window can open, a
+small popup explains it, and full details are written to
+`%LOCALAPPDATA%\SlowBooksPro\data\launcher.log`.
 
 ### Backups
 

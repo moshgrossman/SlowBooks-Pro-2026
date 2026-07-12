@@ -19,10 +19,9 @@ To switch companies: close the window and relaunch — the picker appears
 again. Flags:
   --no-window   start the server and print the URL (no native window)
   --setup-only  prepare .env and data directories, then exit
-  --hidden      used by "Launch SlowBooks Pro.vbs" (the Desktop shortcut)
-                -- redirects output to launcher.log and shows a popup
-                instead of a console on fatal startup errors. Not meant
-                to be passed by hand.
+  --hidden      windowless mode -- redirects output to launcher.log and
+                shows a popup instead of a console on fatal startup
+                errors. Not meant to be passed by hand.
   --port N      override the port (default: APP_PORT from .env, else 3001)
 """
 
@@ -229,8 +228,8 @@ def launch_company(filename: str, port: int, output=None) -> subprocess.Popen:
     if _server_already_running(port):
         raise RuntimeError(
             "SlowBooks Pro is already running (another window is open). "
-            "Close it first -- or run 'Stop SlowBooks Pro.bat' if no window "
-            "is visible -- then try again."
+            "Close it first -- or end the SlowBooksPro process in Task "
+            "Manager if no window is visible -- then try again."
         )
 
     db_path = company_service.company_db_path(filename)
@@ -523,8 +522,7 @@ def run_window(port: int, log_fh=None) -> int:
         msg = (
             "The Microsoft WebView2 runtime is not installed, so the app\n"
             "window cannot open properly.\n"
-            "Run 'Setup SlowBooks Pro.bat' again -- it installs WebView2 now --\n"
-            "or install it manually from:\n"
+            "Install it from:\n"
             "    https://developer.microsoft.com/microsoft-edge/webview2/\n"
             "You can also start without a native window:\n"
             "    python desktop_launcher.py --no-window"
@@ -561,8 +559,7 @@ def run_window(port: int, log_fh=None) -> int:
         msg = (
             f"Could not open the native window: {exc}\n"
             "This usually means the Microsoft WebView2 runtime is missing.\n"
-            "Run 'Setup SlowBooks Pro.bat' again -- it installs WebView2 now --\n"
-            "or install it manually from:\n"
+            "Install it from:\n"
             "    https://developer.microsoft.com/microsoft-edge/webview2/\n"
             "You can also start without a native window:\n"
             "    python desktop_launcher.py --no-window"
@@ -630,12 +627,11 @@ def main() -> int:
         "--hidden",
         action="store_true",
         help=(
-            "used by 'Launch SlowBooks Pro.vbs' (the Desktop shortcut) -- "
-            "redirects all output to launcher.log and shows a popup "
-            "instead of a console on fatal startup errors, since there's "
-            "no visible console to print to. Not meant to be passed by "
-            "hand; use 'Launch SlowBooks Pro.bat' directly for live "
-            "console output while troubleshooting."
+            "windowless mode -- redirects all output to launcher.log and "
+            "shows a popup instead of a console on fatal startup errors, "
+            "since there's no visible console to print to. For live "
+            "console output while troubleshooting, run from a terminal "
+            "without this flag."
         ),
     )
     parser.add_argument("--port", type=int, default=None)
