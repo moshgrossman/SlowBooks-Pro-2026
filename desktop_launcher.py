@@ -19,10 +19,6 @@ To switch companies: close the window and relaunch — the picker appears
 again. Flags:
   --no-window   start the server and print the URL (no native window)
   --setup-only  prepare .env and data directories, then exit
-  --hidden      used by "Launch SlowBooks Pro.vbs" (the Desktop shortcut)
-                -- redirects output to launcher.log and shows a popup
-                instead of a console on fatal startup errors. Not meant
-                to be passed by hand.
   --port N      override the port (default: APP_PORT from .env, else 3001)
 """
 
@@ -33,7 +29,6 @@ import subprocess
 import sys
 import time
 import urllib.request
-from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -141,28 +136,21 @@ def _server_env(db_url: str, port: int) -> dict:
     return env
 
 
-def migrate(db_url: str, output=None) -> None:
+def migrate(db_url: str) -> None:
     """Run `alembic upgrade head` against the chosen company database.
 
     Only meaningfully does work the first time a company file is opened
     (or after an app update ships new migrations); safe to run every time.
-
-    `output`, when given an open file object, redirects alembic's own
-    stdout/stderr there (used in --hidden mode, where there's no console
-    to inherit and print to -- see launcher.log). None (the default)
-    inherits the parent's console, unchanged from before.
     """
     subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=ROOT,
         env=_server_env(db_url, 0),
         check=True,
-        stdout=output,
-        stderr=subprocess.STDOUT if output else None,
     )
 
 
-def start_server(db_url: str, port: int, output=None) -> subprocess.Popen:
+def start_server(db_url: str, port: int) -> subprocess.Popen:
     return subprocess.Popen(
         [
             sys.executable,
@@ -179,8 +167,6 @@ def start_server(db_url: str, port: int, output=None) -> subprocess.Popen:
         ],
         cwd=ROOT,
         env=_server_env(db_url, port),
-        stdout=output,
-        stderr=subprocess.STDOUT if output else None,
     )
 
 
@@ -220,7 +206,7 @@ def _server_already_running(port: int) -> bool:
         return False
 
 
-def launch_company(filename: str, port: int, output=None) -> subprocess.Popen:
+def launch_company(filename: str, port: int) -> subprocess.Popen:
     """Point the app at a company file, migrate it, and start the server."""
     from app.services import company_service
 
@@ -241,9 +227,9 @@ def launch_company(filename: str, port: int, output=None) -> subprocess.Popen:
     set_env_value("DATABASE_URL", db_url)
     company_service.set_last_opened(filename)
 
-    migrate(db_url, output=output)
+    migrate(db_url)
 
-    proc = start_server(db_url, port, output=output)
+    proc = start_server(db_url, port)
     if not wait_for_health(proc, port):
         stop_server(proc)
         raise RuntimeError(
@@ -381,11 +367,10 @@ class PickerApi:
     by pywebview's get_functions(), so only the four methods are exposed.
     """
 
-    def __init__(self, port: int, log_fh=None):
+    def __init__(self, port: int):
         self._port = port
         self._window = None
         self._server: subprocess.Popen | None = None
-        self._log_fh = log_fh
 
     def open_document(self, url: str) -> dict:
         """Open a same-origin document (invoice/estimate PDF, print
@@ -447,7 +432,7 @@ class PickerApi:
 
     def open_company(self, filename: str) -> dict:
         try:
-            self._server = launch_company(filename, self._port, output=self._log_fh)
+            self._server = launch_company(filename, self._port)
         except Exception as exc:
             return {"success": False, "error": str(exc)}
         if self._window is not None:
@@ -490,37 +475,20 @@ def _webview2_installed() -> bool:
     return False
 
 
-def _show_error_box(message: str) -> None:
-    """Best-effort native popup for fatal errors -- used in --hidden mode,
-    where there's no visible console to print to. No-op off Windows, or
-    if it fails for any reason (this must never itself crash the caller)."""
-    if sys.platform != "win32":
-        return
-    try:
-        import ctypes
-
-        MB_ICONERROR = 0x10
-        ctypes.windll.user32.MessageBoxW(0, message, "SlowBooks Pro 2026", MB_ICONERROR)
-    except Exception:
-        pass
-
-
-def run_window(port: int, log_fh=None) -> int:
+def run_window(port: int) -> int:
     try:
         import webview
     except ImportError:
-        msg = (
+        print(
             "pywebview is not installed. Install it with:\n"
             "    pip install -r requirements-desktop.txt\n"
             "or start without a native window:\n"
             "    python desktop_launcher.py --no-window"
         )
-        print(msg)
-        _show_error_box(msg)
         return 1
 
     if not _webview2_installed():
-        msg = (
+        print(
             "The Microsoft WebView2 runtime is not installed, so the app\n"
             "window cannot open properly.\n"
             "Run 'Setup SlowBooks Pro.bat' again -- it installs WebView2 now --\n"
@@ -529,8 +497,6 @@ def run_window(port: int, log_fh=None) -> int:
             "You can also start without a native window:\n"
             "    python desktop_launcher.py --no-window"
         )
-        print(msg)
-        _show_error_box(msg)
         return 1
 
     # pywebview CANCELS downloads by default -- without this, saving a PDF,
@@ -538,7 +504,7 @@ def run_window(port: int, log_fh=None) -> int:
     # With it, WebView2 shows a normal "Save As" dialog.
     webview.settings["ALLOW_DOWNLOADS"] = True
 
-    api = PickerApi(port, log_fh)
+    api = PickerApi(port)
     window = webview.create_window(
         "SlowBooks Pro 2026",
         html=PICKER_HTML,
@@ -558,7 +524,7 @@ def run_window(port: int, log_fh=None) -> int:
         gui = "edgechromium" if sys.platform == "win32" else None
         webview.start(gui=gui)  # blocks until the window is closed
     except Exception as exc:
-        msg = (
+        print(
             f"Could not open the native window: {exc}\n"
             "This usually means the Microsoft WebView2 runtime is missing.\n"
             "Run 'Setup SlowBooks Pro.bat' again -- it installs WebView2 now --\n"
@@ -567,8 +533,6 @@ def run_window(port: int, log_fh=None) -> int:
             "You can also start without a native window:\n"
             "    python desktop_launcher.py --no-window"
         )
-        print(msg)
-        _show_error_box(msg)
         return 1
     finally:
         stop_server(api._server)
@@ -626,66 +590,23 @@ def main() -> int:
         action="store_true",
         help="start the server and print the URL instead of opening a window",
     )
-    parser.add_argument(
-        "--hidden",
-        action="store_true",
-        help=(
-            "used by 'Launch SlowBooks Pro.vbs' (the Desktop shortcut) -- "
-            "redirects all output to launcher.log and shows a popup "
-            "instead of a console on fatal startup errors, since there's "
-            "no visible console to print to. Not meant to be passed by "
-            "hand; use 'Launch SlowBooks Pro.bat' directly for live "
-            "console output while troubleshooting."
-        ),
-    )
     parser.add_argument("--port", type=int, default=None)
     args = parser.parse_args()
 
-    log_fh = None
-    log_path = None
-    if args.hidden:
-        data_dir = get_data_dir()
-        data_dir.mkdir(parents=True, exist_ok=True)
-        log_path = data_dir / "launcher.log"
-        try:
-            log_fh = open(log_path, "a", encoding="utf-8", buffering=1)
-            log_fh.write(
-                f"\n==== {datetime.now().isoformat(timespec='seconds')} ====\n"
-            )
-            sys.stdout = log_fh
-            sys.stderr = log_fh
-        except OSError:
-            log_fh = None  # best effort; proceed without file logging
+    prepare_env()
+    # Pin the data dir for this process and every child (uvicorn, alembic),
+    # so the app's company_service resolves the same location.
+    os.environ["SLOWBOOKS_DATA_DIR"] = str(get_data_dir())
 
-    try:
-        prepare_env()
-        # Pin the data dir for this process and every child (uvicorn,
-        # alembic), so the app's company_service resolves the same
-        # location.
-        os.environ["SLOWBOOKS_DATA_DIR"] = str(get_data_dir())
+    if args.setup_only:
+        print("Setup complete.")
+        return 0
 
-        if args.setup_only:
-            print("Setup complete.")
-            return 0
+    port = args.port or int(get_env_value("APP_PORT") or "3001")
 
-        port = args.port or int(get_env_value("APP_PORT") or "3001")
-
-        if args.no_window:
-            return run_headless(port)
-        return run_window(port, log_fh)
-    except Exception:
-        if not args.hidden:
-            raise  # unchanged behavior: let the traceback print normally
-        import traceback
-
-        tb = traceback.format_exc()
-        if log_fh:
-            log_fh.write(tb + "\n")
-        _show_error_box(
-            "SlowBooks Pro hit an unexpected error and could not start.\n\n"
-            f"Details were written to:\n{log_path}"
-        )
-        return 1
+    if args.no_window:
+        return run_headless(port)
+    return run_window(port)
 
 
 if __name__ == "__main__":
