@@ -50,12 +50,12 @@ stuck, run `Stop SlowBooks Pro.bat` in the app folder as a safety net.
 
 ### Troubleshooting
 
-Day-to-day, the Desktop shortcut opens the app with no console window — it
-runs quietly in the background like any other desktop app. If something goes
-wrong before the app window can open, a small popup explains it, and full
-details are written to `%LOCALAPPDATA%\SlowBooksPro\data\launcher.log`. For
-live console output while troubleshooting something trickier, double-click
-`Launch SlowBooks Pro.bat` inside the app folder instead of the shortcut.
+The Desktop shortcut opens a small black console window alongside the app —
+this is expected; it shows the app's own log output and closes when you close
+the app. If the shortcut ever doesn't work, go to
+`%LOCALAPPDATA%\SlowBooksPro\app` and double-click `Launch SlowBooks Pro.bat`
+directly — that's the same thing the shortcut runs, and re-running
+`Setup SlowBooks Pro.bat` will also repair a broken shortcut.
 
 ### Backups
 
