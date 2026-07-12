@@ -353,12 +353,22 @@ window.addEventListener('pywebviewready', refresh);
 
 
 class PickerApi:
-    """js_api bridge for the company-picker page (window.pywebview.api)."""
+    """js_api bridge for the company-picker page (window.pywebview.api).
+
+    IMPORTANT: all state on this object MUST be underscore-private.
+    pywebview recursively serializes every PUBLIC attribute of the js_api
+    object to expose it to JavaScript -- storing the pywebview Window here
+    as `self.window` sent that walk into the native WinForms object graph,
+    producing endless console spam ('AccessibilityObject.Bounds.Empty...
+    maximum recursion depth exceeded', 'CoreWebView2 can only be accessed
+    from the UI thread') on every page load. Underscore names are skipped
+    by pywebview's get_functions(), so only the three methods are exposed.
+    """
 
     def __init__(self, port: int):
-        self.port = port
-        self.window = None
-        self.server: subprocess.Popen | None = None
+        self._port = port
+        self._window = None
+        self._server: subprocess.Popen | None = None
 
     def list_companies(self) -> dict:
         from app.services import company_service
@@ -378,11 +388,11 @@ class PickerApi:
 
     def open_company(self, filename: str) -> dict:
         try:
-            self.server = launch_company(filename, self.port)
+            self._server = launch_company(filename, self._port)
         except Exception as exc:
             return {"success": False, "error": str(exc)}
-        if self.window is not None:
-            self.window.load_url(f"http://127.0.0.1:{self.port}")
+        if self._window is not None:
+            self._window.load_url(f"http://127.0.0.1:{self._port}")
         return {"success": True}
 
 
@@ -454,7 +464,7 @@ def run_window(port: int) -> int:
         height=860,
         min_size=(900, 600),
     )
-    api.window = window
+    api._window = window
     try:
         # Require the WebView2 (Chromium) renderer on Windows. Without this,
         # pywebview silently falls back to the legacy IE/MSHTML control on
@@ -476,7 +486,7 @@ def run_window(port: int) -> int:
         )
         return 1
     finally:
-        stop_server(api.server)
+        stop_server(api._server)
     return 0
 
 
