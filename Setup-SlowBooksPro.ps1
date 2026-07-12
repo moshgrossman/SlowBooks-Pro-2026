@@ -5,6 +5,8 @@
 # Installs, with NO Docker and NO WSL2:
 #   - the SlowBooks Pro app source (plain HTTPS zip download, no git)
 #   - Python 3.13 (winget, falling back to the python.org installer)
+#   - the Microsoft WebView2 runtime, if missing (renders the native
+#     window; preinstalled on current Windows, absent on older images)
 #   - the GTK3 runtime (Cairo/Pango/gdk-pixbuf DLLs WeasyPrint needs
 #     to render PDFs on native Windows)
 #   - the app's Python dependencies + pywebview (native window)
@@ -110,7 +112,7 @@ function Get-Python {
 # it holds the generated PAYROLL_ENCRYPTION_SECRET that encrypted data
 # depends on.
 # ---------------------------------------------------------------------------
-Banner 'Step 0/5: SlowBooks Pro application files'
+Banner 'Step 0/6: SlowBooks Pro application files'
 $RequiredAppVersion = '2'
 $markerPath = Join-Path $AppDir 'DESKTOP_INSTALL_VERSION'
 $installedVersion = ''
@@ -157,7 +159,7 @@ if ((Test-Path (Join-Path $AppDir 'desktop_launcher.py')) -and ($installedVersio
 # ---------------------------------------------------------------------------
 # Step 1 -- Python
 # ---------------------------------------------------------------------------
-Banner 'Step 1/5: Python'
+Banner 'Step 1/6: Python'
 $python = Get-Python
 if ($python) {
     Write-Host "Found Python: $python -- skipping install."
@@ -196,18 +198,62 @@ if ($python) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 2 -- GTK3 runtime (WeasyPrint's PDF-rendering libraries)
+# Step 2 -- Microsoft WebView2 runtime (renders the app's native window)
 #
-# !! HIGHEST-UNCERTAINTY STEP -- verify on a real Windows machine !!
+# Ships preinstalled on Windows 11 and current Windows 10, but older
+# Windows 10 images (and some VMs) lack it. Without it, pywebview falls
+# back to the legacy IE/MSHTML control, where the app's JavaScript (and
+# pywebview's own js_api bridge) does not work -- field-observed as
+# endless "SyncRoot ... maximum recursion depth exceeded" console spam
+# and a company picker whose buttons do nothing. desktop_launcher.py now
+# requires WebView2 (gui='edgechromium') and refuses the MSHTML fallback.
+# ---------------------------------------------------------------------------
+Banner 'Step 2/6: Native window component (Microsoft WebView2)'
+function Test-WebView2 {
+    # Per Microsoft's docs: the Evergreen runtime registers a 'pv' version
+    # value under one of these EdgeUpdate keys.
+    $keys = @(
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+        'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+        'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+    )
+    foreach ($k in $keys) {
+        $pv = (Get-ItemProperty -Path $k -Name pv -ErrorAction SilentlyContinue).pv
+        if ($pv -and $pv -ne '0.0.0.0') { return $pv }
+    }
+    return $null
+}
+$wv2 = Test-WebView2
+if ($wv2) {
+    Write-Host "WebView2 runtime $wv2 already installed -- skipping."
+} else {
+    Write-Host 'Installing the Microsoft WebView2 runtime...'
+    $wv2Installer = Join-Path $env:TEMP 'MicrosoftEdgeWebView2Setup.exe'
+    try {
+        # Microsoft's stable "Evergreen Bootstrapper" permalink.
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $wv2Installer
+        Start-Process -FilePath $wv2Installer -Wait -ArgumentList '/silent', '/install'
+        Remove-Item -Force $wv2Installer -ErrorAction SilentlyContinue
+    } catch {
+        Fail ("Could not install the WebView2 runtime ($($_.Exception.Message)). Install it manually from " +
+              'https://developer.microsoft.com/microsoft-edge/webview2/ then run this file again.')
+    }
+    if (-not (Test-WebView2)) {
+        Fail ('The WebView2 installer finished but the runtime is not registered. Install it manually from ' +
+              'https://developer.microsoft.com/microsoft-edge/webview2/ then run this file again.')
+    }
+    Write-Host 'WebView2 runtime installed.'
+}
+
+# ---------------------------------------------------------------------------
+# Step 3 -- GTK3 runtime (WeasyPrint's PDF-rendering libraries)
+#
 # WeasyPrint needs Cairo/Pango/gdk-pixbuf, which have no pip wheels on
 # Windows. WeasyPrint's own docs point to this prebuilt GTK3 runtime
-# installer. Two things MUST be confirmed by an actual test (not assumed):
-#   (a) the silent install (/S) completes and puts DLLs in $GtkBinDir,
-#   (b) WeasyPrint can actually render a PDF afterward.
-# The bin dir is force-added to the machine PATH below because the NSIS
-# silent mode may not tick the installer's own "set PATH" option.
+# installer. The bin dir is force-added to the machine PATH below because
+# the NSIS silent mode may not tick the installer's own "set PATH" option.
 # ---------------------------------------------------------------------------
-Banner 'Step 2/5: PDF rendering component (GTK3 runtime)'
+Banner 'Step 3/6: PDF rendering component (GTK3 runtime)'
 if (Test-Path (Join-Path $GtkBinDir 'libgobject-2.0-0.dll')) {
     Write-Host "GTK3 runtime already installed at $GtkBinDir -- skipping."
 } else {
@@ -243,9 +289,9 @@ if ($machinePath -notlike "*$GtkBinDir*") {
 Update-SessionPath
 
 # ---------------------------------------------------------------------------
-# Step 3 -- Python dependencies
+# Step 4 -- Python dependencies
 # ---------------------------------------------------------------------------
-Banner 'Step 3/5: Python packages'
+Banner 'Step 4/6: Python packages'
 Push-Location $AppDir
 try {
     & $python -m pip install --upgrade pip --quiet
@@ -259,9 +305,9 @@ try {
 Write-Host 'Python packages installed.'
 
 # ---------------------------------------------------------------------------
-# Step 4 -- first-run configuration (.env)
+# Step 5 -- first-run configuration (.env)
 # ---------------------------------------------------------------------------
-Banner 'Step 4/5: First-run configuration'
+Banner 'Step 5/6: First-run configuration'
 Push-Location $AppDir
 try {
     & $python desktop_launcher.py --setup-only
@@ -271,9 +317,9 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-# Step 5 -- Desktop shortcut + first launch
+# Step 6 -- Desktop shortcut + first launch
 # ---------------------------------------------------------------------------
-Banner 'Step 5/5: Desktop shortcut'
+Banner 'Step 6/6: Desktop shortcut'
 $desktop = [Environment]::GetFolderPath('Desktop')
 # Remove the shortcut left by the retired WSL2-based setup, if any.
 $oldShortcut = Join-Path $desktop 'Slowbooks Pro 2026.lnk'

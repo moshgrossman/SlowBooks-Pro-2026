@@ -364,6 +364,41 @@ class PickerApi:
         return {"success": True}
 
 
+def _webview2_installed() -> bool:
+    """Is the Microsoft WebView2 runtime present? (Windows only.)
+
+    Same detection Microsoft documents (and pywebview itself uses): the
+    Evergreen runtime registers a 'pv' version under an EdgeUpdate key.
+    This must be checked HERE, before opening the window: pywebview does
+    NOT fail when WebView2 is missing -- even with gui='edgechromium'
+    forced it silently falls back to the legacy IE/MSHTML control, where
+    neither the app's JavaScript nor the js_api bridge works (endless
+    "SyncRoot ... maximum recursion depth exceeded" spam, dead buttons).
+    """
+    if sys.platform != "win32":
+        return True
+    import winreg
+
+    guid = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    key_paths = [
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{guid}",
+        ),
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{guid}"),
+        (winreg.HKEY_CURRENT_USER, rf"Software\Microsoft\EdgeUpdate\Clients\{guid}"),
+    ]
+    for root, path in key_paths:
+        try:
+            with winreg.OpenKey(root, path) as key:
+                pv, _ = winreg.QueryValueEx(key, "pv")
+                if pv and pv != "0.0.0.0":
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def run_window(port: int) -> int:
     try:
         import webview
@@ -372,6 +407,18 @@ def run_window(port: int) -> int:
             "pywebview is not installed. Install it with:\n"
             "    pip install -r requirements-desktop.txt\n"
             "or start without a native window:\n"
+            "    python desktop_launcher.py --no-window"
+        )
+        return 1
+
+    if not _webview2_installed():
+        print(
+            "The Microsoft WebView2 runtime is not installed, so the app\n"
+            "window cannot open properly.\n"
+            "Run 'Setup SlowBooks Pro.bat' again -- it installs WebView2 now --\n"
+            "or install it manually from:\n"
+            "    https://developer.microsoft.com/microsoft-edge/webview2/\n"
+            "You can also start without a native window:\n"
             "    python desktop_launcher.py --no-window"
         )
         return 1
@@ -387,7 +434,25 @@ def run_window(port: int) -> int:
     )
     api.window = window
     try:
-        webview.start()  # blocks until the window is closed
+        # Require the WebView2 (Chromium) renderer on Windows. Without this,
+        # pywebview silently falls back to the legacy IE/MSHTML control on
+        # machines missing the WebView2 runtime -- where neither the app's
+        # JavaScript nor pywebview's own js_api bridge works (field-observed
+        # as endless "SyncRoot ... maximum recursion depth exceeded" spam and
+        # picker buttons that do nothing). Better to fail with instructions.
+        gui = "edgechromium" if sys.platform == "win32" else None
+        webview.start(gui=gui)  # blocks until the window is closed
+    except Exception as exc:
+        print(
+            f"Could not open the native window: {exc}\n"
+            "This usually means the Microsoft WebView2 runtime is missing.\n"
+            "Run 'Setup SlowBooks Pro.bat' again -- it installs WebView2 now --\n"
+            "or install it manually from:\n"
+            "    https://developer.microsoft.com/microsoft-edge/webview2/\n"
+            "You can also start without a native window:\n"
+            "    python desktop_launcher.py --no-window"
+        )
+        return 1
     finally:
         stop_server(api.server)
     return 0
