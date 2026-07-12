@@ -54,6 +54,13 @@ def get_session_secret() -> str:
       1. SESSION_SECRET_KEY env var (ops-preferred)
       2. .slowbooks-session.key file next to the repo (auto-created at 0600)
       3. Fresh random generation (not persisted if the FS is read-only)
+
+    Diagnostic prints below are deliberate: this key rotating unexpectedly
+    silently invalidates every existing session cookie (users get bounced
+    to a login screen mid-use with no visible cause). #3 is a SILENT
+    fallback by design elsewhere in this function -- these prints exist so
+    that when it fires, it shows up in the desktop install's visible
+    console window instead of vanishing into an `except OSError: pass`.
     """
     env_key = os.environ.get("SESSION_SECRET_KEY", "").strip()
     if env_key:
@@ -64,11 +71,13 @@ def get_session_secret() -> str:
         try:
             existing = key_path.read_text().strip()
             if existing:
+                print(f"[slowbooks] session secret loaded from {key_path}")
                 return existing
-        except OSError:
-            pass
+        except OSError as exc:
+            print(f"[slowbooks] WARNING: could not read {key_path}: {exc}")
 
     new_key = secrets.token_urlsafe(48)
+    persisted = False
     try:
         import tempfile
 
@@ -77,13 +86,27 @@ def get_session_secret() -> str:
         os.close(fd)
         os.chmod(tmp, 0o600)
         os.replace(tmp, str(key_path))
-    except OSError:
-        pass
+        persisted = True
+    except OSError as exc:
+        print(
+            f"[slowbooks] WARNING: could not persist session secret to {key_path}: {exc}"
+        )
     if key_path.exists():
         try:
-            return key_path.read_text().strip() or new_key
+            existing = key_path.read_text().strip()
+            if existing:
+                if persisted:
+                    print(f"[slowbooks] new session secret written to {key_path}")
+                return existing
         except OSError:
             pass
+    print(
+        "[slowbooks] WARNING: session secret is NOT persisted -- it will be "
+        "different every time the server restarts, which logs everyone out "
+        "without warning. This should only ever print once, on a truly "
+        "first-ever launch; if it keeps printing on every restart, "
+        f"{key_path} isn't writable."
+    )
     return new_key
 
 
