@@ -290,14 +290,31 @@ Update-SessionPath
 
 # ---------------------------------------------------------------------------
 # Step 4 -- Python dependencies
+#
+# Field report: this step appeared to hang indefinitely on a fresh VM.
+# requirements.txt pins many packages against each other with version
+# RANGES (fastapi/starlette in particular -- see the comments in that
+# file), and pip's resolver can spend a long time silently backtracking
+# through version combinations when ranges overlap like that -- a
+# well-documented pip behavior that looks identical to a genuine hang
+# (pip does print "This could take a while" when it detects this, but
+# only after it's already been silently working for a bit). --prefer-
+# binary steers pip away from also considering source distributions
+# (more candidates to weigh = more potential backtracking), and a
+# --timeout bounds each individual network read so a stalled connection
+# fails/retries instead of sitting forever. Neither is a guaranteed fix
+# without knowing the exact cause, but both are safe, well-documented pip
+# flags with no downside here.
 # ---------------------------------------------------------------------------
 Banner 'Step 4/6: Python packages'
+Write-Host 'This can take several minutes on a fresh machine, especially the first' -ForegroundColor DarkGray
+Write-Host 'requirements.txt install -- a long pause here is normal, not a hang.' -ForegroundColor DarkGray
 Push-Location $AppDir
 try {
     & $python -m pip install --upgrade pip --quiet
-    & $python -m pip install -r requirements.txt
+    & $python -m pip install --prefer-binary --timeout 60 -r requirements.txt
     if ($LASTEXITCODE -ne 0) { Fail 'pip install -r requirements.txt failed (see output above).' }
-    & $python -m pip install -r requirements-desktop.txt
+    & $python -m pip install --prefer-binary --timeout 60 -r requirements-desktop.txt
     if ($LASTEXITCODE -ne 0) { Fail 'pip install -r requirements-desktop.txt failed (see output above).' }
 } finally {
     Pop-Location
