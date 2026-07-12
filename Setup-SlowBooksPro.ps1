@@ -69,13 +69,29 @@ function Get-Python {
 
 # ---------------------------------------------------------------------------
 # Step 0 — fetch the app source (plain zip download, no git needed)
+#
+# Version-marker based: the repo ships a DESKTOP_INSTALL_VERSION file, and a
+# matching marker in $AppDir means the snapshot is current. A mismatched or
+# missing marker (including installs made by the retired WSL2-based setup,
+# which had no marker) gets its app files replaced wholesale. That is safe:
+# company data lives in the sibling 'data' folder and is never touched; the
+# only per-install file inside $AppDir is .env, which is preserved because
+# it holds the generated PAYROLL_ENCRYPTION_SECRET that encrypted data
+# depends on.
 # ---------------------------------------------------------------------------
 Banner 'Step 0/5: SlowBooks Pro application files'
-if (Test-Path (Join-Path $AppDir 'desktop_launcher.py')) {
-    Write-Host "Already present at $AppDir — skipping download."
-    # Never re-fetch over an existing install; company data lives in the
-    # sibling 'data' folder and is never touched here either way.
+$RequiredAppVersion = '2'
+$markerPath = Join-Path $AppDir 'DESKTOP_INSTALL_VERSION'
+$installedVersion = ''
+if (Test-Path $markerPath) {
+    $installedVersion = (Get-Content $markerPath -First 1).Trim()
+}
+if ((Test-Path (Join-Path $AppDir 'desktop_launcher.py')) -and ($installedVersion -eq $RequiredAppVersion)) {
+    Write-Host "Already present (version $installedVersion) at $AppDir — skipping download."
 } else {
+    if (Test-Path $AppDir) {
+        Write-Host 'Found application files from an older setup — replacing them (your data and settings are kept).'
+    }
     New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
     $zip = Join-Path $env:TEMP 'SlowBooksPro-main.zip'
     $extract = Join-Path $env:TEMP 'SlowBooksPro-extract'
@@ -89,7 +105,19 @@ if (Test-Path (Join-Path $AppDir 'desktop_launcher.py')) {
     Expand-Archive -Path $zip -DestinationPath $extract
     # The zip contains a single "<repo>-main" root folder — that becomes $AppDir.
     $inner = Get-ChildItem -Directory $extract | Select-Object -First 1
-    Move-Item $inner.FullName $AppDir
+    if (Test-Path $AppDir) {
+        $savedEnv = Join-Path $env:TEMP 'SlowBooksPro-saved.env'
+        $liveEnv = Join-Path $AppDir '.env'
+        if (Test-Path $liveEnv) { Copy-Item $liveEnv $savedEnv -Force }
+        Remove-Item -Recurse -Force $AppDir
+        Move-Item $inner.FullName $AppDir
+        if (Test-Path $savedEnv) {
+            Move-Item $savedEnv (Join-Path $AppDir '.env') -Force
+            Write-Host 'Restored existing .env (keeps your encryption secret).'
+        }
+    } else {
+        Move-Item $inner.FullName $AppDir
+    }
     Remove-Item -Force $zip
     Remove-Item -Recurse -Force $extract
     Write-Host "Installed application files to $AppDir"
@@ -216,6 +244,9 @@ try {
 # ---------------------------------------------------------------------------
 Banner 'Step 5/5: Desktop shortcut'
 $desktop = [Environment]::GetFolderPath('Desktop')
+# Remove the shortcut left by the retired WSL2-based setup, if any.
+$oldShortcut = Join-Path $desktop 'Slowbooks Pro 2026.lnk'
+if (Test-Path $oldShortcut) { Remove-Item -Force $oldShortcut }
 $shortcutPath = Join-Path $desktop 'SlowBooks Pro.lnk'
 $launchBat = Join-Path $AppDir 'Launch SlowBooks Pro.bat'
 $shell = New-Object -ComObject WScript.Shell
