@@ -113,7 +113,7 @@ function Get-Python {
 # depends on.
 # ---------------------------------------------------------------------------
 Banner 'Step 0/6: SlowBooks Pro application files'
-$RequiredAppVersion = '10'
+$RequiredAppVersion = '11'
 $markerPath = Join-Path $AppDir 'DESKTOP_INSTALL_VERSION'
 $installedVersion = ''
 if (Test-Path $markerPath) {
@@ -345,14 +345,10 @@ $shortcutPath = Join-Path $desktop 'SlowBooks Pro.lnk'
 # The shortcut targets the plain, visible-console .bat launcher.
 #
 # A hidden-console .vbs variant (Launch SlowBooks Pro.vbs, pythonw.exe +
-# desktop_launcher.py --hidden) was tried here and field-tested as the
-# default: it left the user unable to open the app at all (blank/no
-# window, from BOTH the post-setup auto-launch and the Desktop shortcut).
-# The .vbs file and --hidden flag still exist in the app folder/launcher
-# for future investigation, but neither is wired up by default until that
-# failure mode is understood and fixed on a real machine -- reverting to
-# the .bat, which is simple, console-visible, and has been reliable in
-# every field test so far.
+# desktop_launcher.py --hidden) was tried here and field-tested: it left
+# the user unable to open the app at all (blank/no window, from BOTH the
+# post-setup auto-launch and the Desktop shortcut). Reverted -- the .bat
+# is simple, console-visible, and has been reliable in every field test.
 $launchBat = Join-Path $AppDir 'Launch SlowBooks Pro.bat'
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
