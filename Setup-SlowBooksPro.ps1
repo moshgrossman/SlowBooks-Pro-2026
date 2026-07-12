@@ -1,5 +1,5 @@
-# ============================================================================
-# SlowBooks Pro 2026 — native Windows desktop setup.
+﻿# ============================================================================
+# SlowBooks Pro 2026 -- native Windows desktop setup.
 #
 # Fetched and run by "Setup SlowBooks Pro.bat" (which self-elevates first).
 # Installs, with NO Docker and NO WSL2:
@@ -35,7 +35,7 @@ function Banner([string]$msg) {
 function Fail([string]$msg) {
     Write-Host ''
     Write-Host "SETUP STOPPED: $msg" -ForegroundColor Red
-    Write-Host 'Fix the issue above, then run this setup again — completed steps are skipped automatically.'
+    Write-Host 'Fix the issue above, then run this setup again -- completed steps are skipped automatically.'
     exit 1
 }
 
@@ -47,7 +47,7 @@ function Update-SessionPath {
 }
 
 # Resolve a REAL Python 3 interpreter path. "python" on a fresh Windows
-# install is often the Microsoft Store alias stub, which is not Python —
+# install is often the Microsoft Store alias stub, which is not Python --
 # so verify by actually running it and resolving sys.executable.
 function Get-Python {
     $launcher = Get-Command py -ErrorAction SilentlyContinue
@@ -68,7 +68,7 @@ function Get-Python {
 }
 
 # ---------------------------------------------------------------------------
-# Step 0 — fetch the app source (plain zip download, no git needed)
+# Step 0 -- fetch the app source (plain zip download, no git needed)
 #
 # Version-marker based: the repo ships a DESKTOP_INSTALL_VERSION file, and a
 # matching marker in $AppDir means the snapshot is current. A mismatched or
@@ -87,10 +87,10 @@ if (Test-Path $markerPath) {
     $installedVersion = (Get-Content $markerPath -First 1).Trim()
 }
 if ((Test-Path (Join-Path $AppDir 'desktop_launcher.py')) -and ($installedVersion -eq $RequiredAppVersion)) {
-    Write-Host "Already present (version $installedVersion) at $AppDir — skipping download."
+    Write-Host "Already present (version $installedVersion) at $AppDir -- skipping download."
 } else {
     if (Test-Path $AppDir) {
-        Write-Host 'Found application files from an older setup — replacing them (your data and settings are kept).'
+        Write-Host 'Found application files from an older setup -- replacing them (your data and settings are kept).'
     }
     New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
     $zip = Join-Path $env:TEMP 'SlowBooksPro-main.zip'
@@ -103,7 +103,7 @@ if ((Test-Path (Join-Path $AppDir 'desktop_launcher.py')) -and ($installedVersio
     }
     if (Test-Path $extract) { Remove-Item -Recurse -Force $extract }
     Expand-Archive -Path $zip -DestinationPath $extract
-    # The zip contains a single "<repo>-main" root folder — that becomes $AppDir.
+    # The zip contains a single "<repo>-main" root folder -- that becomes $AppDir.
     $inner = Get-ChildItem -Directory $extract | Select-Object -First 1
     if (Test-Path $AppDir) {
         $savedEnv = Join-Path $env:TEMP 'SlowBooksPro-saved.env'
@@ -124,12 +124,12 @@ if ((Test-Path (Join-Path $AppDir 'desktop_launcher.py')) -and ($installedVersio
 }
 
 # ---------------------------------------------------------------------------
-# Step 1 — Python
+# Step 1 -- Python
 # ---------------------------------------------------------------------------
 Banner 'Step 1/5: Python'
 $python = Get-Python
 if ($python) {
-    Write-Host "Found Python: $python — skipping install."
+    Write-Host "Found Python: $python -- skipping install."
 } else {
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($winget) {
@@ -165,9 +165,9 @@ if ($python) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 2 — GTK3 runtime (WeasyPrint's PDF-rendering libraries)
+# Step 2 -- GTK3 runtime (WeasyPrint's PDF-rendering libraries)
 #
-# !! HIGHEST-UNCERTAINTY STEP — verify on a real Windows machine !!
+# !! HIGHEST-UNCERTAINTY STEP -- verify on a real Windows machine !!
 # WeasyPrint needs Cairo/Pango/gdk-pixbuf, which have no pip wheels on
 # Windows. WeasyPrint's own docs point to this prebuilt GTK3 runtime
 # installer. Two things MUST be confirmed by an actual test (not assumed):
@@ -178,7 +178,7 @@ if ($python) {
 # ---------------------------------------------------------------------------
 Banner 'Step 2/5: PDF rendering component (GTK3 runtime)'
 if (Test-Path (Join-Path $GtkBinDir 'libgobject-2.0-0.dll')) {
-    Write-Host "GTK3 runtime already installed at $GtkBinDir — skipping."
+    Write-Host "GTK3 runtime already installed at $GtkBinDir -- skipping."
 } else {
     Write-Host 'Looking up the latest GTK3 runtime release...'
     try {
@@ -212,7 +212,7 @@ if ($machinePath -notlike "*$GtkBinDir*") {
 Update-SessionPath
 
 # ---------------------------------------------------------------------------
-# Step 3 — Python dependencies
+# Step 3 -- Python dependencies
 # ---------------------------------------------------------------------------
 Banner 'Step 3/5: Python packages'
 Push-Location $AppDir
@@ -228,7 +228,7 @@ try {
 Write-Host 'Python packages installed.'
 
 # ---------------------------------------------------------------------------
-# Step 4 — first-run configuration (.env)
+# Step 4 -- first-run configuration (.env)
 # ---------------------------------------------------------------------------
 Banner 'Step 4/5: First-run configuration'
 Push-Location $AppDir
@@ -240,7 +240,7 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-# Step 5 — Desktop shortcut + first launch
+# Step 5 -- Desktop shortcut + first launch
 # ---------------------------------------------------------------------------
 Banner 'Step 5/5: Desktop shortcut'
 $desktop = [Environment]::GetFolderPath('Desktop')

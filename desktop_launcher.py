@@ -407,7 +407,7 @@ def run_headless(port: int) -> int:
         if companies:
             filename = companies[0]["file"]
         else:
-            print("No companies yet — creating 'My Company'.")
+            print("No companies yet -- creating 'My Company'.")
             result = company_service.manifest_create_company("My Company")
             if not result["success"]:
                 print(f"ERROR: {result['error']}")
