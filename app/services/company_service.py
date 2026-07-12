@@ -225,13 +225,14 @@ def manifest_create_company(name: str) -> dict:
         }
 
     manifest = _read_manifest()
-    # company_filename_for() already sanitized, but verify the resolved
-    # path stays inside the companies dir in the same scope as its uses —
-    # the containment check is the barrier CodeQL recognizes for
-    # py/path-injection, same convention as app/routes/backups.py.
-    db_path = (companies_dir() / filename).resolve()
-    if not db_path.is_relative_to(companies_dir().resolve()):
+    # company_filename_for() already sanitized, but re-check containment
+    # with the normpath + startswith pattern (the guard CodeQL documents
+    # as the py/path-injection barrier) before any filesystem use.
+    companies_root = os.path.normpath(str(companies_dir()))
+    candidate = os.path.normpath(os.path.join(companies_root, filename))
+    if not candidate.startswith(companies_root + os.sep):
         return {"success": False, "error": "Invalid company file name"}
+    db_path = Path(candidate)
     if any(c.get("file") == filename for c in manifest["companies"]) or (
         db_path.exists()
     ):
