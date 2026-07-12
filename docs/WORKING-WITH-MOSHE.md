@@ -61,6 +61,17 @@ assistant should check which model it is running as and play only its role.
 - **Override**: an explicit instruction from Moshe to implement in-session
   beats the role split.
 
+## Context handoff
+Moshe runs implementation chats separately from planning chats for rapid
+iteration, so short-lived chats are the norm — and a long chat costs more
+per message since the whole conversation gets re-read every turn.
+- Once context window usage crosses **~30%**, proactively offer a
+  handoff — don't wait to be asked: "We're at ~30% context — want a
+  summary to start a fresh chat?"
+- If he takes it, write a tight summary (what's done, what's decided,
+  current plan/PR state, exact next step — not a transcript) for him to
+  paste into a new chat. Offer once per crossing, then follow his call.
+
 ## Working style
 - Everything ships as a PR he merges himself. **This is not just a safety
   gate — it is his only steering wheel.** He works from an Android tablet

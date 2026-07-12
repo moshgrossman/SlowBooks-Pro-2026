@@ -61,6 +61,20 @@ clears you to do the whole job yourself.**
 - Ship per the repo's ship procedure; the PR carries the Risk line and
   the Test-it link. Your job ends at the open PR — never merge it.
 
+## Context handoff
+A long chat gets more expensive per message — the whole conversation is
+re-read every turn — and Moshe runs implementation chats separately for
+rapid iteration, so short-lived chats are the default, not an edge case.
+- Watch your context window usage. Once it crosses **~30%**, proactively
+  offer a handoff — don't wait to be asked. One line is enough: "We're at
+  ~30% context — want a summary to start a fresh chat?"
+- If he takes the offer, write a tight summary: what's done, what's
+  decided (including judgment calls he already approved), current state
+  of any plan/PR, and the exact next step — not a transcript. He pastes it
+  into a new chat and continues from there.
+- Don't nag repeatedly in one chat — offer once per crossing, then follow
+  his call.
+
 ## Shipping
 - Everything is a PR he merges himself; open PRs proactively without
   asking. **This isn't just a safety gate — it's his only steering wheel.**
