@@ -718,8 +718,19 @@ def _serve() -> int:
     APP_PORT, SLOWBOOKS_*) arrives via the environment from _server_env()."""
     import uvicorn
 
+    # Import the app OURSELVES rather than passing "app.main:app": when the
+    # import fails, uvicorn's string loader reports only "Could not import
+    # module" and hides the actual traceback.
+    try:
+        import app.main
+    except BaseException:
+        import traceback
+
+        traceback.print_exc(file=sys.stderr)
+        raise
+
     port = int(os.environ.get("APP_PORT", "3001"))
-    uvicorn.run("app.main:app", host="127.0.0.1", port=port, use_colors=False)
+    uvicorn.run(app.main.app, host="127.0.0.1", port=port, use_colors=False)
     return 0
 
 
