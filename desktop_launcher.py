@@ -161,6 +161,9 @@ def start_server(db_url: str, port: int) -> subprocess.Popen:
             "127.0.0.1",
             "--port",
             str(port),
+            # cmd.exe consoles don't render ANSI colors by default; without
+            # this the logs are full of "<-[32m" escape-code garbage.
+            "--no-use-colors",
         ],
         cwd=ROOT,
         env=_server_env(db_url, port),
@@ -193,9 +196,28 @@ def stop_server(proc: subprocess.Popen | None) -> None:
         proc.kill()
 
 
+def _server_already_running(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/health", timeout=1
+        ) as resp:
+            return resp.status == 200
+    except OSError:
+        return False
+
+
 def launch_company(filename: str, port: int) -> subprocess.Popen:
     """Point the app at a company file, migrate it, and start the server."""
     from app.services import company_service
+
+    # A second launch while the app is already open would lose the fight
+    # for the port and fail confusingly -- say what's actually wrong.
+    if _server_already_running(port):
+        raise RuntimeError(
+            "SlowBooks Pro is already running (another window is open). "
+            "Close it first -- or run 'Stop SlowBooks Pro.bat' if no window "
+            "is visible -- then try again."
+        )
 
     db_path = company_service.company_db_path(filename)
     if db_path is None:
