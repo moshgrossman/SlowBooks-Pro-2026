@@ -8,6 +8,7 @@
 # connections open).
 # ============================================================================
 
+import logging
 import os
 import re
 import sqlite3
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session
 from app.config import DATABASE_URL
 from app.models.backups import Backup
 from app.services import storage
+
+logger = logging.getLogger(__name__)
 
 BACKUP_DIR = storage.backups_root()
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -108,9 +111,12 @@ def _create_sqlite_backup(db: Session, notes: str, backup_type: str) -> dict:
             sqlite3.connect(filepath)
         ) as dest:
             source.backup(dest)
-    except sqlite3.Error as exc:
+    except sqlite3.Error:
+        # Exception text can leak paths/internals into the HTTP response
+        # (routes surface this error string) — log it, say something generic.
+        logger.exception("SQLite backup failed")
         filepath.unlink(missing_ok=True)
-        return {"success": False, "error": f"SQLite backup failed: {exc}"}
+        return {"success": False, "error": "SQLite backup failed. Check logs."}
 
     file_size = filepath.stat().st_size
     backup = Backup(
@@ -145,8 +151,11 @@ def _restore_sqlite_backup(filepath: Path, safe_name: str) -> dict:
             sqlite3.connect(dest)
         ) as target:
             source.backup(target)
-    except sqlite3.Error as exc:
-        return {"success": False, "error": f"SQLite restore failed: {exc}"}
+    except sqlite3.Error:
+        # Same shape as _create_sqlite_backup: no exception text in the
+        # user-facing error (py/stack-trace-exposure) — details go to logs.
+        logger.exception("SQLite restore failed")
+        return {"success": False, "error": "SQLite restore failed. Check logs."}
 
     return {"success": True, "message": f"Restored from {safe_name}"}
 

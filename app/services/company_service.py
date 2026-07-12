@@ -217,12 +217,21 @@ def manifest_create_company(name: str) -> dict:
     if not name:
         return {"success": False, "error": "Company name is required"}
 
-    filename = company_filename_for(name)
-    if filename is None:
+    derived = company_filename_for(name)
+    if derived is None:
         return {
             "success": False,
             "error": "Company name must contain at least one letter or number",
         }
+
+    # company_filename_for() already sanitized, but re-apply the barrier at
+    # the point of use — os.path.basename + strict regex in the same scope
+    # as the path construction — so static analysis (CodeQL
+    # py/path-injection) can see the taint from `name` is cut here. Same
+    # convention as backup_service.restore_backup().
+    filename = os.path.basename(derived)
+    if filename != derived or not _COMPANY_FILENAME_RE.match(filename):
+        return {"success": False, "error": "Invalid company file name"}
 
     manifest = _read_manifest()
     db_path = companies_dir() / filename
