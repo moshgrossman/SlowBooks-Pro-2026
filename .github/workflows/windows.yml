@@ -63,7 +63,10 @@ jobs:
           # WeasyPrint (>=61) dlopens exactly these via cffi:
           #   gobject-2.0, pango-1.0, pangoft2-1.0, harfbuzz,
           #   harfbuzz-subset, fontconfig
-          # Copy them plus their full transitive closure (ntldd -R).
+          # Copy them, their known dependency set, and (safety net) the
+          # transitive closure ntldd reports. ntldd prints WINDOWS paths
+          # (C:\msys64\mingw64\bin\...) so normalize before matching, and
+          # never let a no-match grep kill the step (pipefail).
           set -e
           mkdir -p packaging/windows/gtk-dlls
           cd packaging/windows/gtk-dlls
@@ -72,13 +75,29 @@ jobs:
                      libfontconfig-1; do
             cp "/mingw64/bin/$lib.dll" .
           done
-          for _ in 1 2 3; do  # iterate until the closure stops growing
-            for d in *.dll; do ntldd -R "$d"; done \
-              | grep -io '[a-z0-9_.+-]*\.dll => /mingw64/bin/[a-z0-9_.+-]*\.dll' \
-              | sed 's/.*=> //' | sort -u \
-              | while read -r dep; do cp -n "$dep" . 2>/dev/null || true; done
+          # Known transitive deps of the set above on MSYS2 (missing ones
+          # are tolerated — package contents drift across snapshots).
+          for lib in libintl-8 libiconv-2 libpcre2-8-0 libffi-8 \
+                     libgmodule-2.0-0 libfribidi-0 libthai-0 libdatrie-1 \
+                     libfreetype-6 libbrotlidec libbrotlicommon libbz2-1 \
+                     libpng16-16 libexpat-1 libgraphite2 zlib1 \
+                     libwinpthread-1 libgcc_s_seh-1 libstdc++-6; do
+            cp "/mingw64/bin/$lib.dll" . 2>/dev/null || true
           done
-          echo "Staged $(ls -1 | wc -l) DLLs:"; ls -1
+          for _ in 1 2 3; do  # iterate until the closure stops growing
+            deps=$( (for d in *.dll; do ntldd -R "$d" 2>/dev/null || true; done) \
+              | tr '\\' '/' \
+              | grep -Eio '[a-z]:/[a-z0-9_./+-]*/mingw64/bin/[a-z0-9_.+-]+\.dll' \
+              | sort -u || true)
+            for dep in $deps; do cp -n "$dep" . 2>/dev/null || true; done
+          done
+          count=$(ls -1 *.dll | wc -l)
+          echo "Staged $count DLLs:"; ls -1
+          # 7 primaries alone means the closure sweep found nothing — that
+          # WILL fail at import time, so fail loudly here instead.
+          if [ "$count" -lt 15 ]; then
+            echo "ERROR: dependency closure looks incomplete"; exit 1
+          fi
 
       - name: Install Python dependencies
         shell: pwsh
