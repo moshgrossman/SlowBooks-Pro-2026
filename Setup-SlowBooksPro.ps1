@@ -113,7 +113,7 @@ function Get-Python {
 # depends on.
 # ---------------------------------------------------------------------------
 Banner 'Step 0/6: SlowBooks Pro application files'
-$RequiredAppVersion = '7'
+$RequiredAppVersion = '11'
 $markerPath = Join-Path $AppDir 'DESKTOP_INSTALL_VERSION'
 $installedVersion = ''
 if (Test-Path $markerPath) {
@@ -290,14 +290,29 @@ Update-SessionPath
 
 # ---------------------------------------------------------------------------
 # Step 4 -- Python dependencies
+#
+# Field report: this step appeared to hang indefinitely on a fresh VM, with
+# NOTHING printed under the "Step 4/6" banner at all. That rules out the
+# requirements.txt resolve as the stall point -- pip prints "Collecting X"
+# lines progressively even while backtracking through version ranges, so a
+# hang there would still show partial output. Complete silence points at
+# the pip self-upgrade line below it instead: it used to pass --quiet,
+# which suppresses ALL output by design, and had no --timeout at all -- so
+# a slow/stuck first-ever network call from a fresh VM (DNS, proxy,
+# firewall reaching PyPI) would look exactly like a silent hang. Fixed by
+# dropping --quiet (so *something* prints if it's just slow) and applying
+# the same --timeout/--prefer-binary treatment already used below.
 # ---------------------------------------------------------------------------
 Banner 'Step 4/6: Python packages'
+Write-Host 'This can take several minutes on a fresh machine, especially the first' -ForegroundColor DarkGray
+Write-Host 'requirements.txt install -- a long pause here is normal, not a hang.' -ForegroundColor DarkGray
 Push-Location $AppDir
 try {
-    & $python -m pip install --upgrade pip --quiet
-    & $python -m pip install -r requirements.txt
+    & $python -m pip install --upgrade pip --prefer-binary --timeout 60
+    if ($LASTEXITCODE -ne 0) { Fail 'pip self-upgrade failed (see output above).' }
+    & $python -m pip install --prefer-binary --timeout 60 -r requirements.txt
     if ($LASTEXITCODE -ne 0) { Fail 'pip install -r requirements.txt failed (see output above).' }
-    & $python -m pip install -r requirements-desktop.txt
+    & $python -m pip install --prefer-binary --timeout 60 -r requirements-desktop.txt
     if ($LASTEXITCODE -ne 0) { Fail 'pip install -r requirements-desktop.txt failed (see output above).' }
 } finally {
     Pop-Location
@@ -325,6 +340,13 @@ $desktop = [Environment]::GetFolderPath('Desktop')
 $oldShortcut = Join-Path $desktop 'Slowbooks Pro 2026.lnk'
 if (Test-Path $oldShortcut) { Remove-Item -Force $oldShortcut }
 $shortcutPath = Join-Path $desktop 'SlowBooks Pro.lnk'
+# The shortcut targets the plain, visible-console .bat launcher.
+#
+# A hidden-console .vbs variant (Launch SlowBooks Pro.vbs, pythonw.exe +
+# desktop_launcher.py --hidden) was tried here and field-tested: it left
+# the user unable to open the app at all (blank/no window, from BOTH the
+# post-setup auto-launch and the Desktop shortcut). Reverted -- the .bat
+# is simple, console-visible, and has been reliable in every field test.
 $launchBat = Join-Path $AppDir 'Launch SlowBooks Pro.bat'
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
