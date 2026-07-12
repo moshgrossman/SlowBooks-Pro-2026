@@ -21,9 +21,12 @@ elif os.getenv("DATABASE_URL"):
     config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# disable_existing_loggers=False: alembic also runs in-process (desktop
+# company creation, the frozen launcher) — the default True silently
+# kills every already-created app logger, eating the very tracebacks
+# that explain a failed migration.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 from app.database import Base
 from app.models import *  # noqa: F401,F403 — import all models for autogenerate
