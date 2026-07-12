@@ -118,6 +118,7 @@ jobs:
           pyinstaller --noconfirm --clean SlowBooksPro.spec
 
       - name: Smoke test the frozen bundle
+        timeout-minutes: 8
         shell: pwsh
         run: |
           # console=False exe: no stdout — verdict is the exit code, details

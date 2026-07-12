@@ -750,7 +750,10 @@ def run_smoke_test(port: int = 3999) -> int:
         filename = existing[0]["file"]
 
     print("smoke: launching server...")
-    proc = launch_company(filename, port)
+    # Pipe the server child's output into our own (the log file when
+    # frozen) — a crashing uvicorn child is otherwise completely silent.
+    child_out = sys.stdout if hasattr(sys.stdout, "fileno") else None
+    proc = launch_company(filename, port, output=child_out)
     try:
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/health", timeout=5
@@ -858,7 +861,16 @@ def main() -> int:
             return 0
 
         if args.smoke_test:
-            return run_smoke_test()
+            # Never fall through to the generic handler below: its
+            # MessageBox would block a headless CI runner forever.
+            try:
+                return run_smoke_test()
+            except Exception:
+                import traceback
+
+                traceback.print_exc(file=sys.stdout)
+                print("smoke: FAIL (unhandled exception above)")
+                return 1
 
         port = args.port or int(get_env_value("APP_PORT") or "3001")
 
