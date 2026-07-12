@@ -291,27 +291,25 @@ Update-SessionPath
 # ---------------------------------------------------------------------------
 # Step 4 -- Python dependencies
 #
-# Field report: this step appeared to hang indefinitely on a fresh VM.
-# requirements.txt pins many packages against each other with version
-# RANGES (fastapi/starlette in particular -- see the comments in that
-# file), and pip's resolver can spend a long time silently backtracking
-# through version combinations when ranges overlap like that -- a
-# well-documented pip behavior that looks identical to a genuine hang
-# (pip does print "This could take a while" when it detects this, but
-# only after it's already been silently working for a bit). --prefer-
-# binary steers pip away from also considering source distributions
-# (more candidates to weigh = more potential backtracking), and a
-# --timeout bounds each individual network read so a stalled connection
-# fails/retries instead of sitting forever. Neither is a guaranteed fix
-# without knowing the exact cause, but both are safe, well-documented pip
-# flags with no downside here.
+# Field report: this step appeared to hang indefinitely on a fresh VM, with
+# NOTHING printed under the "Step 4/6" banner at all. That rules out the
+# requirements.txt resolve as the stall point -- pip prints "Collecting X"
+# lines progressively even while backtracking through version ranges, so a
+# hang there would still show partial output. Complete silence points at
+# the pip self-upgrade line below it instead: it used to pass --quiet,
+# which suppresses ALL output by design, and had no --timeout at all -- so
+# a slow/stuck first-ever network call from a fresh VM (DNS, proxy,
+# firewall reaching PyPI) would look exactly like a silent hang. Fixed by
+# dropping --quiet (so *something* prints if it's just slow) and applying
+# the same --timeout/--prefer-binary treatment already used below.
 # ---------------------------------------------------------------------------
 Banner 'Step 4/6: Python packages'
 Write-Host 'This can take several minutes on a fresh machine, especially the first' -ForegroundColor DarkGray
 Write-Host 'requirements.txt install -- a long pause here is normal, not a hang.' -ForegroundColor DarkGray
 Push-Location $AppDir
 try {
-    & $python -m pip install --upgrade pip --quiet
+    & $python -m pip install --upgrade pip --prefer-binary --timeout 60
+    if ($LASTEXITCODE -ne 0) { Fail 'pip self-upgrade failed (see output above).' }
     & $python -m pip install --prefer-binary --timeout 60 -r requirements.txt
     if ($LASTEXITCODE -ne 0) { Fail 'pip install -r requirements.txt failed (see output above).' }
     & $python -m pip install --prefer-binary --timeout 60 -r requirements-desktop.txt
