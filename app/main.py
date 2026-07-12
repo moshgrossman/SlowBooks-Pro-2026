@@ -30,6 +30,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.services import storage
 from app.services.rate_limit import limiter
 
 from app.routes import (
@@ -84,6 +85,9 @@ from app.routes import analytics
 # Phase 9.7: Single-user authentication
 from app.routes import auth as auth_routes
 
+# System info + update check (desktop installs)
+from app.routes import system as system_routes
+
 # Phase 11: Inventory tracking + drill-down reports + saved reports
 from app.routes import saved_reports
 
@@ -99,6 +103,7 @@ from app.routes import document_audit as document_audit_routes
 from app.routes import reseller_permits as reseller_permits_routes
 from app.services.auth import get_session_secret
 
+from app import __version__
 from app.config import (
     CORS_ALLOW_ORIGINS,
     FORCE_HTTPS,
@@ -180,7 +185,7 @@ async def lifespan(app: FastAPI):
 # its default response class rather than pinning the now-deprecated ORJSON one.
 app = FastAPI(
     title="Slowbooks Pro 2026",
-    version="2.0.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -374,6 +379,7 @@ app.include_router(uploads.router)
 app.include_router(bank_import.router)
 app.include_router(tax.router)
 app.include_router(backups.router)
+app.include_router(system_routes.router)
 # Phase 6: Ambitious
 app.include_router(companies.router)
 app.include_router(employees.router)
@@ -415,16 +421,27 @@ app.include_router(reseller_permits_routes.router)
 # Register audit log hooks
 register_audit_hooks(SessionLocal)
 
-# Static files
+# Static files. Uploads live outside the bundle on desktop installs
+# (SLOWBOOKS_DATA_DIR) but keep their /static/uploads URLs — the more
+# specific mount must be registered first so it wins over /static.
 static_dir = Path(__file__).parent / "static"
+uploads_dir = storage.uploads_root()
+uploads_dir.mkdir(parents=True, exist_ok=True)
+if uploads_dir != static_dir / "uploads":
+    app.mount(
+        "/static/uploads",
+        StaticFiles(directory=str(uploads_dir)),
+        name="static-uploads",
+    )
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-# Ensure uploads directory exists
-uploads_dir = static_dir / "uploads"
-uploads_dir.mkdir(exist_ok=True)
 
 # SPA entry point
 index_path = Path(__file__).parent.parent / "index.html"
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(static_dir / "favicon.ico")
 
 
 @app.get("/health")

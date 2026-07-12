@@ -7,6 +7,40 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### Native Windows desktop install (no Docker, no WSL2)
+
+Replaces the WSL2/Docker-Engine Windows setup from PR #1 with a fully
+native install: the app runs as a normal Windows process against SQLite,
+in its own desktop window (pywebview → WebView2). Desktop-mode groundwork
+contributed in PR #14; delivery is a signed Windows installer (see below).
+
+- **Multi-company, QuickBooks-style:** each company is its own SQLite file
+  under `%LOCALAPPDATA%\SlowBooksPro\data\companies\`, tracked in a
+  `companies.json` manifest. A company picker appears at every launch;
+  switching companies = close and reopen. Creating a company runs the real
+  `alembic upgrade head` plus the Chart of Accounts seed against a fresh
+  file. Company identity/settings already live per-database, so each file
+  is fully self-contained.
+- **Backups on SQLite:** `backup_service` gains a SQLite branch — backup/
+  restore are consistent `.db` snapshots via sqlite3's online backup API.
+  Postgres installs keep pg_dump/pg_restore unchanged.
+- **Migrations now genuinely run on SQLite:** four ALTER-added FK
+  constraints converted to Alembic batch mode and literal `now()` server
+  defaults replaced with the dialect-portable `CURRENT_TIMESTAMP`
+  (identical semantics on PostgreSQL; these migrations have already run on
+  existing Postgres installs and never re-run).
+- **Launcher:** `desktop_launcher.py` — env prep with a generated
+  `PAYROLL_ENCRYPTION_SECRET`, company picker, uvicorn on 127.0.0.1,
+  native window; closing the window stops the server.
+- **Delivery is a signed installer**, not setup scripts: the
+  `.bat`/`.ps1` bootstrap flow contributed in PR #14 was replaced by
+  `SlowBooksPro-Setup-x64.exe` — a PyInstaller bundle (Python and the
+  PDF-rendering libraries included, nothing installed system-wide) built
+  by CI and code-signed via Azure Trusted Signing, so Windows shows a
+  verified publisher instead of a SmartScreen warning.
+- The Docker/Postgres multi-company path (separate databases per company)
+  is unchanged and still used when `DATABASE_URL` is Postgres.
+
 ### Post-merge review fixes (PR #12 follow-up)
 
 A deep review pass after merging the payroll/HR contribution surfaced and

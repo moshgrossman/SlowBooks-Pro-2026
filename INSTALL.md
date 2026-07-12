@@ -1,6 +1,68 @@
 # Installation Guide
 
-Three ways to run Slowbooks Pro 2026.
+Ways to run Slowbooks Pro 2026.
+
+---
+
+## Option 0: Windows installer
+
+**Recommended for Windows users.** No Docker, no WSL2, no command line —
+Slowbooks Pro runs as a normal desktop app in its own window (no browser
+tab). The installer is digitally signed, so Windows shows a verified
+publisher instead of a SmartScreen warning.
+
+### Steps
+
+1. Download **`SlowBooksPro-Setup-x64.exe`** from the
+   [latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest)
+   (or from [slowbookspro.com](https://www.slowbookspro.com)).
+2. Double-click it and follow the wizard. Everything installs into
+   `Program Files`; a Start Menu entry (and optional Desktop shortcut) is
+   created.
+3. Launch **SlowBooks Pro 2026** — you'll be asked to create your first
+   company, and the app opens in its own window.
+
+The app is fully self-contained — **no Docker, no WSL2, no database server,
+no Python install**. Your books are stored in ordinary files on your own
+machine, under `%LOCALAPPDATA%\SlowBooksPro`, which upgrades and even
+uninstalls leave untouched.
+
+When a new version is released, the footer of the app shows an
+**Update available** notice — download the new installer and run it over
+the old install; your companies and settings are kept.
+
+### Working with multiple companies
+
+This install manages companies the way QuickBooks Desktop does: each company
+is its own file, stored under `%LOCALAPPDATA%\SlowBooksPro\data\companies\`.
+Every time you open SlowBooks Pro you're asked which company to open (or to
+create a new one). To switch companies, close the app and open it again.
+
+### Stopping the app
+
+Just close the window — the server shuts down with it. If something ever gets
+stuck, end the **SlowBooksPro** process from Task Manager.
+
+### Troubleshooting
+
+The app runs with no console window — quietly in the background like any
+other desktop app. If something goes wrong before the app window can open, a
+small popup explains it, and full details are written to
+`%LOCALAPPDATA%\SlowBooksPro\data\launcher.log`.
+
+### Backups
+
+Backups created from the Settings UI are simply snapshots of the open
+company's `.db` file (stored in the app's `backups` folder). You can also copy
+the company files in `%LOCALAPPDATA%\SlowBooksPro\data\companies\` anywhere
+you like while the app is closed — each file is a complete, self-contained
+company.
+
+### Tradeoffs versus Option 1 (Docker + PostgreSQL)
+
+This path is **single-user, single-machine**: no multi-user client portal
+serving other people, no concurrent access. In exchange, there's nothing to
+administer — no `pg_dump`, no containers, no background services.
 
 ---
 
@@ -17,11 +79,22 @@ Three ways to run Slowbooks Pro 2026.
 ```bash
 git clone https://github.com/VonHoltenCodes/SlowBooks-Pro-2026.git
 cd SlowBooks-Pro-2026
-cp .env.example .env        # optional — defaults work out of the box
+cp .env.example .env
+
+# Set a strong encryption secret for employee bank PII. The app refuses to
+# start against Postgres with the shipped dev default, so this is required:
+#   Linux/macOS:  openssl rand -base64 32
+#   any OS:       python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Put the result on the PAYROLL_ENCRYPTION_SECRET= line in .env.
+
 docker compose up
 ```
 
 Open **http://localhost:3001** in your browser.
+
+> On Windows, **Option 0** avoids all of this (no Docker at all, secret
+> generated for you, opens a desktop window) — prefer it unless you
+> specifically want a multi-user Docker + PostgreSQL server.
 
 ### What happens on first run
 
