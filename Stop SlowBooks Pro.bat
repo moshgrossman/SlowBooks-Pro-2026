@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem SlowBooks Pro 2026 — emergency stop (safety net only).
+rem SlowBooks Pro 2026 -- emergency stop (safety net only).
 rem
 rem Normally you stop SlowBooks Pro simply by closing its window. Use this
 rem only if the app didn't exit cleanly and something is still holding the

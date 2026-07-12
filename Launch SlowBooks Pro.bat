@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem SlowBooks Pro 2026 — daily launcher (the Desktop shortcut points here).
+rem SlowBooks Pro 2026 -- daily launcher (the Desktop shortcut points here).
 rem No Administrator rights needed: nothing is installed, this only runs
 rem what setup already installed. Closing the app window stops the server.
 rem ============================================================================
