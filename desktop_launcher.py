@@ -838,6 +838,20 @@ def main() -> int:
         # alembic), so the app's company_service resolves the same
         # location.
         os.environ["SLOWBOOKS_DATA_DIR"] = str(get_data_dir())
+        os.environ.setdefault("SLOWBOOKS_ENV_FILE", str(ENV_FILE))
+        if FROZEN:
+            # app.config bakes DATABASE_URL into a constant at import time
+            # and app.database builds its engine from it. This launcher
+            # process never uses that engine, but the modules DO get
+            # imported here (company picker, in-process alembic), and the
+            # Postgres fallback would import psycopg2 — which the desktop
+            # bundle deliberately doesn't ship. Bind it to a scratch
+            # SQLite URL BEFORE the first app import; the server child
+            # gets the real company URL via _server_env().
+            os.environ.setdefault(
+                "DATABASE_URL",
+                "sqlite:///" + (get_data_dir() / "launcher-scratch.db").as_posix(),
+            )
 
         if args.setup_only:
             print("Setup complete.")
