@@ -636,6 +636,15 @@ def run_window(port: int, log_fh=None) -> int:
     # With it, WebView2 shows a normal "Save As" dialog.
     webview.settings["ALLOW_DOWNLOADS"] = True
 
+    # pywebview defaults to private_mode=True, which partitions cookie
+    # storage: the session cookie never reached the second native window
+    # (print preview / PDF -> "Not authenticated") or WebView2's download
+    # requests (CSV export -> "Needs authorization"). A persistent shared
+    # profile under our data dir fixes both, and logins now survive app
+    # restarts as a bonus.
+    storage_dir = get_data_dir() / "webview"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+
     api = PickerApi(port, log_fh)
     window = webview.create_window(
         "SlowBooks Pro 2026",
@@ -654,7 +663,9 @@ def run_window(port: int, log_fh=None) -> int:
         # as endless "SyncRoot ... maximum recursion depth exceeded" spam and
         # picker buttons that do nothing). Better to fail with instructions.
         gui = "edgechromium" if sys.platform == "win32" else None
-        webview.start(gui=gui)  # blocks until the window is closed
+        # Blocks until the window is closed. private_mode/storage_path:
+        # see the comment above where storage_dir is created.
+        webview.start(gui=gui, private_mode=False, storage_path=str(storage_dir))
     except Exception as exc:
         msg = (
             f"Could not open the native window: {exc}\n"

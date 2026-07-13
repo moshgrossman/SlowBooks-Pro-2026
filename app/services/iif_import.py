@@ -1053,9 +1053,14 @@ def validate_iif(content: str) -> dict:
 
     try:
         parsed = parse_iif(content)
-    except Exception as e:
+    except Exception:
+        # No exception text in the client-facing report (it can leak
+        # internals — py/stack-trace-exposure); details go to the log.
+        logger.exception("Failed to parse IIF file during validation")
         report["valid"] = False
-        report["errors"].append(f"Failed to parse IIF file: {str(e)}")
+        report["errors"].append(
+            "Failed to parse IIF file — it does not look like valid IIF."
+        )
         return report
 
     # Check what sections exist

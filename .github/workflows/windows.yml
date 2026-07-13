@@ -157,6 +157,14 @@ jobs:
         run: |
           Compress-Archive -Path packaging\windows\dist\SlowBooksPro\* -DestinationPath SlowBooksPro-windows-x64.zip -Force
 
+      - name: Fetch WebView2 Evergreen bootstrapper
+        shell: pwsh
+        run: |
+          # Microsoft's permalink for the ~2MB Evergreen bootstrapper; the
+          # installer runs it only on machines missing the runtime.
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile packaging\windows\MicrosoftEdgeWebView2Setup.exe
+          if ((Get-Item packaging\windows\MicrosoftEdgeWebView2Setup.exe).Length -lt 500KB) { Write-Error "bootstrapper download looks wrong"; exit 1 }
+
       - name: Build the installer (Inno Setup)
         shell: pwsh
         run: |

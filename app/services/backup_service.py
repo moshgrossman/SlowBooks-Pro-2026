@@ -227,10 +227,13 @@ def restore_backup(db: Session, filename: str) -> dict:
     if safe_name is None:
         return {"success": False, "error": "Invalid filename"}
 
-    backup_root = BACKUP_DIR.resolve()
-    filepath = (backup_root / safe_name).resolve()
-    if not filepath.is_relative_to(backup_root):
+    # normpath + startswith is the containment guard CodeQL recognizes for
+    # py/path-injection (is_relative_to on Path objects is not).
+    backup_root = os.path.normpath(str(BACKUP_DIR))
+    candidate = os.path.normpath(os.path.join(backup_root, safe_name))
+    if not candidate.startswith(backup_root + os.sep):
         return {"success": False, "error": "Invalid filename"}
+    filepath = Path(candidate)
     if not filepath.exists():
         return {"success": False, "error": f"Backup file not found: {safe_name}"}
 

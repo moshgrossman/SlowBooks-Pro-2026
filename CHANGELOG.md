@@ -7,6 +7,21 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### v2.1.1 — Windows field fixes (first-machine feedback)
+
+- **Session cookie now reaches every native window and download.**
+  pywebview's default `private_mode=True` partitions WebView2 cookie
+  storage, so the print-preview/PDF window opened as
+  `{"detail":"Not authenticated"}` and CSV/backup downloads failed with
+  "Needs authorization" (saving the 401 JSON body as `.json`). The
+  desktop shell now uses a persistent shared profile under
+  `%LOCALAPPDATA%\SlowBooksPro\data\webview` — PDFs, exports, and
+  attachment downloads work, and logins survive app restarts.
+- **The installer now installs the WebView2 runtime when missing**
+  (silent Evergreen bootstrapper, skipped if already present) instead
+  of showing a "runtime is not installed" error on first launch —
+  Windows 10 machines without Edge updates hit this.
+
 ### Native Windows desktop install (no Docker, no WSL2)
 
 Replaces the WSL2/Docker-Engine Windows setup from PR #1 with a fully
