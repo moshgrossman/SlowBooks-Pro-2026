@@ -66,6 +66,62 @@ administer — no `pg_dump`, no containers, no background services.
 
 ---
 
+## Option 0b: Portable — run it off a USB stick
+
+Same app as Option 0, but nothing is installed and nothing is left behind on
+the computer you plug into. Your books live on the stick and travel with it.
+Useful for working across a few machines, or on a PC where you are not
+allowed to install software.
+
+### Steps
+
+1. Download **`SlowBooksPro-windows-x64.zip`** from the
+   [latest release](https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/releases/latest)
+   (the `.zip`, **not** the `Setup` `.exe`).
+2. Extract the whole folder onto the USB stick.
+3. Inside that folder — right next to `SlowBooksPro.exe` — create a new
+   folder named exactly **`Data`**.
+4. Double-click `SlowBooksPro.exe`.
+
+That `Data` folder is the entire switch. When it is there, every company
+file, your settings, uploads and backups are written inside it on the stick.
+When it is not there, the app behaves exactly as an installed copy does and
+stores everything under `%LOCALAPPDATA%\SlowBooksPro` on the host machine.
+
+To move to another computer, close the app, eject the stick, plug it in
+elsewhere and run `SlowBooksPro.exe` again — your companies are all there.
+
+### What still has to be on the host PC
+
+Only the **Microsoft WebView2 runtime**, which draws the app window. It ships
+with current Windows 10 and Windows 11, so on most machines there is nothing
+to do. On an older PC that lacks it you would need to install it once, which
+does require permission to install software.
+
+PDF printing needs nothing extra — the graphics libraries are bundled inside
+the folder on the stick.
+
+### If the stick is write-protected
+
+The app falls back to storing data on the host computer rather than refusing
+to start. Everything works, but your books stay on that machine instead of
+travelling — so check the stick's write-protect switch if a company you
+created seems to have vanished on the next PC.
+
+### Please read this before putting real books on a stick
+
+**A lost stick is a data breach.** The company files and the key that
+encrypts employee bank details sit side by side in the `Data` folder, so
+whoever picks up the stick can read everything on it — payroll, customers,
+bank transactions.
+
+If the books contain other people's personal or payroll information, use a
+hardware-encrypted USB stick, or turn on BitLocker To Go for the drive
+(Windows: right-click the drive → **Turn on BitLocker**). Treat the stick
+like the paper file it replaces.
+
+---
+
 ## Option 1: Docker (Windows, macOS, Linux)
 
 **Recommended for Windows and macOS.** One command, no dependency headaches.

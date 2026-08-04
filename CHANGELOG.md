@@ -7,6 +7,17 @@ on what the software does, not on what sprint shipped what.
 
 ## [Unreleased]
 
+### Added
+- **Portable mode (Windows)** — create a folder named `Data` next to
+  `SlowBooksPro.exe` and the whole writable tree (companies, `.env`,
+  uploads, backups, logs) moves onto that drive instead of the host
+  machine's `%LOCALAPPDATA%`, so the app can run from a USB stick and
+  leave nothing behind. Installed copies have no such folder and are
+  unaffected; an explicit `SLOWBOOKS_DATA_DIR` still overrides both. A
+  write-protected drive falls back to `%LOCALAPPDATA%` rather than
+  failing to start. See "Option 0b" in `INSTALL.md`, including the
+  drive-encryption warning for books holding payroll data.
+
 ### v2.2.0 — The fork-integration release
 
 The largest single release since 2.0: work mined from four community
