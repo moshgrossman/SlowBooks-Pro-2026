@@ -36,6 +36,7 @@ re-executed with the internal --_serve flag (no separate Python needed).
 """
 
 import argparse
+import functools
 import os
 import re
 import secrets
@@ -54,12 +55,79 @@ FROZEN = bool(getattr(sys, "frozen", False))
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 
 
+# Portable ("run it off a USB stick") mode. When a folder with this name
+# sits next to SlowBooksPro.exe, everything writable — companies, .env,
+# uploads, backups, logs — goes THERE instead of the host machine's
+# AppData. The books travel with the stick and nothing is left behind on
+# the borrowed PC. Creating the folder is the entire switch: an installed
+# copy never has one, so normal installs are completely unaffected.
+PORTABLE_DIR_NAME = "Data"
+
+
+def _exe_dir() -> Path | None:
+    """Folder holding SlowBooksPro.exe, or None when running from source.
+
+    Deliberately NOT sys._MEIPASS (ROOT above): in a one-folder PyInstaller
+    build that points at the bundled _internal/ subfolder, which is
+    read-only application content. The stick's writable area sits beside
+    the executable itself.
+    """
+    if not FROZEN:
+        return None
+    return Path(sys.executable).resolve().parent
+
+
+def _is_writable(directory: Path) -> bool:
+    """Probe by actually writing a file.
+
+    os.access(..., os.W_OK) is not trustworthy here: on Windows it reports
+    the read-only ATTRIBUTE rather than the effective ACL, so a folder the
+    user genuinely cannot write to can still come back writable. A real
+    create-and-delete is the only honest answer, and this runs once.
+    """
+    probe = directory / ".slowbooks-write-test"
+    try:
+        probe.touch()
+        probe.unlink()
+    except OSError:
+        return False
+    return True
+
+
+@functools.lru_cache(maxsize=1)
+def portable_data_dir() -> Path | None:
+    """This copy's on-stick data folder, or None if not in portable mode.
+
+    Cached: it is consulted on every get_data_dir() call (including at
+    import time) and the answer cannot change while the app is running.
+    """
+    exe_dir = _exe_dir()
+    if exe_dir is None:
+        return None
+    candidate = exe_dir / PORTABLE_DIR_NAME
+    if not candidate.is_dir():
+        return None
+    if not _is_writable(candidate):
+        # Write-protected stick, or a locked-down host that won't let us
+        # write to removable media. Falling back to AppData keeps the app
+        # usable instead of dying on a confusing permission error — the
+        # books just stay on that machine, which the docs call out.
+        return None
+    # Mirrors the AppData layout (SlowBooksPro/data, config in the parent)
+    # so _config_dir() lands on <stick>/Data and nothing else has to care
+    # which mode we are in.
+    return candidate / "data"
+
+
 def get_data_dir() -> Path:
     """Same resolution as app.services.company_service.data_dir(), duplicated
     here so --setup-only works before the app's dependencies are installed."""
     override = os.environ.get("SLOWBOOKS_DATA_DIR")
     if override:
         return Path(override)
+    portable = portable_data_dir()
+    if portable is not None:
+        return portable
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "SlowBooksPro" / "data"

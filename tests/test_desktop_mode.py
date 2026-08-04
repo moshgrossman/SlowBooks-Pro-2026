@@ -12,6 +12,7 @@
 import json
 import os
 import sqlite3
+import sys
 
 import pytest
 
@@ -387,3 +388,90 @@ def test_webview_cache_purged_on_version_change(tmp_path):
     desktop_launcher._purge_stale_webview_cache(storage, "10.0.0")
     assert not probe.exists()
     assert (storage / "app-version.txt").read_text().strip() == "10.0.0"
+
+
+# ---------------------------------------------------------------------------
+# Portable mode — running the frozen build off a USB stick
+#
+# The switch is a folder named Data sitting next to SlowBooksPro.exe. These
+# tests fake "frozen" rather than building a real bundle, so they run on any
+# platform in normal CI.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def frozen_stick(tmp_path, monkeypatch):
+    """Pretend to be the frozen exe living at <tmp>/stick/SlowBooksPro.exe."""
+    import desktop_launcher
+
+    exe_dir = tmp_path / "stick"
+    exe_dir.mkdir()
+    monkeypatch.setattr(desktop_launcher, "FROZEN", True)
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "SlowBooksPro.exe"))
+    monkeypatch.delenv("SLOWBOOKS_DATA_DIR", raising=False)
+    desktop_launcher.portable_data_dir.cache_clear()
+    yield desktop_launcher, exe_dir
+    desktop_launcher.portable_data_dir.cache_clear()
+
+
+def test_portable_mode_off_without_the_data_folder(frozen_stick):
+    launcher, exe_dir = frozen_stick
+    assert launcher.portable_data_dir() is None
+    # Falls back to the machine's per-user area, not the stick.
+    assert exe_dir not in launcher.get_data_dir().parents
+
+
+def test_portable_mode_on_when_data_folder_present(frozen_stick):
+    launcher, exe_dir = frozen_stick
+    (exe_dir / "Data").mkdir()
+    launcher.portable_data_dir.cache_clear()
+
+    assert launcher.portable_data_dir() == exe_dir / "Data" / "data"
+    assert launcher.get_data_dir() == exe_dir / "Data" / "data"
+
+
+def test_portable_mode_puts_config_beside_the_data_folder(frozen_stick):
+    """.env must travel with the stick too, not stay on the host PC."""
+    launcher, exe_dir = frozen_stick
+    (exe_dir / "Data").mkdir()
+    launcher.portable_data_dir.cache_clear()
+
+    assert launcher._config_dir() == exe_dir / "Data"
+
+
+def test_portable_mode_falls_back_when_stick_is_write_protected(frozen_stick):
+    """A read-only stick must not stop the app from starting."""
+    launcher, exe_dir = frozen_stick
+    (exe_dir / "Data").mkdir()
+    launcher.portable_data_dir.cache_clear()
+    monkeypatch_target = launcher._is_writable
+    assert monkeypatch_target(exe_dir / "Data") is True
+
+    launcher._is_writable = lambda _d: False
+    try:
+        launcher.portable_data_dir.cache_clear()
+        assert launcher.portable_data_dir() is None
+    finally:
+        launcher._is_writable = monkeypatch_target
+        launcher.portable_data_dir.cache_clear()
+
+
+def test_explicit_env_override_still_wins_over_portable(frozen_stick, monkeypatch):
+    launcher, exe_dir = frozen_stick
+    (exe_dir / "Data").mkdir()
+    launcher.portable_data_dir.cache_clear()
+    monkeypatch.setenv("SLOWBOOKS_DATA_DIR", str(exe_dir / "elsewhere"))
+
+    assert launcher.get_data_dir() == exe_dir / "elsewhere"
+
+
+def test_running_from_source_is_never_portable(tmp_path, monkeypatch):
+    """A dev checkout keeps its existing behaviour even if a Data folder exists."""
+    import desktop_launcher
+
+    monkeypatch.setattr(desktop_launcher, "FROZEN", False)
+    desktop_launcher.portable_data_dir.cache_clear()
+    try:
+        assert desktop_launcher.portable_data_dir() is None
+    finally:
+        desktop_launcher.portable_data_dir.cache_clear()
