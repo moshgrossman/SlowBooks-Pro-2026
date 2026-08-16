@@ -13,6 +13,7 @@ import json
 import os
 import sqlite3
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -475,3 +476,22 @@ def test_running_from_source_is_never_portable(tmp_path, monkeypatch):
         assert desktop_launcher.portable_data_dir() is None
     finally:
         desktop_launcher.portable_data_dir.cache_clear()
+
+
+def test_preview_pdfs_stay_on_the_stick_in_portable_mode(frozen_stick):
+    """Opening a PDF must not leave payroll/customer documents on a host PC."""
+    launcher, exe_dir = frozen_stick
+    (exe_dir / "Data").mkdir()
+    launcher.portable_data_dir.cache_clear()
+
+    assert launcher.document_temp_dir() == exe_dir / "Data" / "data" / "docs"
+
+
+def test_preview_pdfs_use_system_temp_when_not_portable(frozen_stick):
+    """Installed copies keep the existing behaviour."""
+    import tempfile
+
+    launcher, _exe_dir = frozen_stick
+    expected = Path(tempfile.gettempdir()) / "SlowBooksProDocs"
+
+    assert launcher.document_temp_dir() == expected

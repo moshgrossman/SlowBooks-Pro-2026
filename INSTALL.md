@@ -123,6 +123,21 @@ does require permission to install software.
 PDF printing needs nothing extra — the graphics libraries are bundled inside
 the folder on the stick.
 
+### What does and does not stay on the stick
+
+On the stick: your companies, settings, uploads, backups, logs, and the
+preview files created when you open an invoice, statement, paystub or tax
+form in the app's viewer. Those previews are real files, so in portable mode
+they are written under `Data\data\docs\` rather than into the host machine's
+temporary folder — otherwise every document you looked at would be left
+behind on a borrowed PC.
+
+**One deliberate exception:** using **Save backup** inside the app copies the
+backup file into that computer's own Downloads folder, because that is what
+you asked it to do. If you are on someone else's machine and don't want the
+file to stay there, move it onto the stick and delete it from Downloads
+before you leave.
+
 ### If the stick is write-protected
 
 The app falls back to storing data on the host computer rather than refusing

@@ -136,6 +136,28 @@ def get_data_dir() -> Path:
     return Path.home() / ".slowbookspro" / "data"
 
 
+def document_temp_dir() -> Path:
+    """Where the native viewer's preview files (PDF/HTML) are written.
+
+    In portable mode these MUST NOT land in the host machine's temp
+    folder. The viewer writes a real file for every invoice, statement,
+    paystub and tax form the user opens, and never deletes it — so on a
+    borrowed PC the default would quietly leave a pile of payroll and
+    customer documents behind, which is the exact opposite of what
+    portable mode promises. Keeping them under the portable tree means
+    they leave with the stick.
+
+    Outside portable mode this is unchanged: the system temp directory,
+    same as before.
+    """
+    import tempfile
+
+    portable = portable_data_dir()
+    if portable is not None:
+        return portable / "docs"
+    return Path(tempfile.gettempdir()) / "SlowBooksProDocs"
+
+
 def _config_dir() -> Path:
     """Writable per-user config root (parent of the data dir when frozen)."""
     return get_data_dir().parent if FROZEN else Path(__file__).resolve().parent
@@ -730,13 +752,12 @@ class PickerApi:
         docstring describes.
         """
         import base64
-        import tempfile
 
         try:
             import webview
 
             data = base64.b64decode(base64_data)
-            temp_dir = Path(tempfile.gettempdir()) / "SlowBooksProDocs"
+            temp_dir = document_temp_dir()
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_path = temp_dir / _safe_temp_filename(title, ".pdf")
             temp_path.write_bytes(data)
