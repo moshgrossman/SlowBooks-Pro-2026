@@ -408,6 +408,7 @@ def frozen_stick(tmp_path, monkeypatch):
     exe_dir = tmp_path / "stick"
     exe_dir.mkdir()
     monkeypatch.setattr(desktop_launcher, "FROZEN", True)
+    monkeypatch.setattr(desktop_launcher.sys, "platform", "win32")
     monkeypatch.setattr(sys, "executable", str(exe_dir / "SlowBooksPro.exe"))
     monkeypatch.delenv("SLOWBOOKS_DATA_DIR", raising=False)
     desktop_launcher.portable_data_dir.cache_clear()
@@ -495,3 +496,22 @@ def test_preview_pdfs_use_system_temp_when_not_portable(frozen_stick):
     expected = Path(tempfile.gettempdir()) / "SlowBooksProDocs"
 
     assert launcher.document_temp_dir() == expected
+
+
+def test_portable_mode_is_windows_only(frozen_stick):
+    """macOS ships a signed .app bundle; sys.executable lives INSIDE it, so
+    a Data folder 'next to the executable' would mean writing into the
+    bundle and breaking its signature."""
+    launcher, exe_dir = frozen_stick
+    (exe_dir / "Data").mkdir()
+    launcher.portable_data_dir.cache_clear()
+    assert launcher.portable_data_dir() is not None  # win32: on
+
+    launcher.portable_data_dir.cache_clear()
+    original = launcher.sys.platform
+    launcher.sys.platform = "darwin"
+    try:
+        assert launcher.portable_data_dir() is None
+    finally:
+        launcher.sys.platform = original
+        launcher.portable_data_dir.cache_clear()

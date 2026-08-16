@@ -101,6 +101,15 @@ def portable_data_dir() -> Path | None:
     Cached: it is consulted on every get_data_dir() call (including at
     import time) and the answer cannot change while the app is running.
     """
+    # Windows only, deliberately. On macOS the frozen build is a signed
+    # .app bundle and sys.executable lives inside it at
+    # Contents/MacOS/ — so "next to the executable" would mean writing
+    # INTO the bundle, which breaks the code signature and is somewhere
+    # no user would ever think to create a folder. A Mac equivalent would
+    # need to key off the .app's own parent directory and be tested on
+    # real hardware; until then macOS keeps Application Support.
+    if sys.platform != "win32":
+        return None
     exe_dir = _exe_dir()
     if exe_dir is None:
         return None
